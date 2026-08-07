@@ -27,3 +27,8 @@ keys
 *.mobileprovision
 
 dockerfile
+
+# Native macOS build and release products
+native/.build
+native/build
+native/dist

@@ -55,6 +55,16 @@ export const AppleID = ({
   }, [forceUpdateIds]);
 
   useEffect(() => {
+    let dispose = () => {};
+    listen("saved-accounts-changed", () => {
+      setForceUpdateIds((value) => value + 1);
+    }).then((unlisten) => {
+      dispose = unlisten;
+    });
+    return () => dispose();
+  }, []);
+
+  useEffect(() => {
     setSelectedSerials(certs?.map((c) => c.serialNumber) ?? []);
   }, [certs]);
 

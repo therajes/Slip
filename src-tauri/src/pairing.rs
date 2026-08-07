@@ -108,7 +108,7 @@ async fn generate_lockdown_plist(
 async fn generate_rppairing_plist(
     provider: &dyn IdeviceProvider,
 ) -> Result<(plist::Value, Vec<u8>), IdeviceError> {
-    let bytes = generate_rppairing(provider, "iloader").await?.to_bytes();
+    let bytes = generate_rppairing(provider, "Sideloom").await?.to_bytes();
     let plist = plist::Value::from_reader_xml(std::io::Cursor::new(&bytes))
         .map_err(|e| IdeviceError::InternalError(format!("Invalid RPPairing plist: {}", e)))?;
     Ok((plist, bytes))

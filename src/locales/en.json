@@ -116,6 +116,11 @@
     "install_livecontainer_step_pairing": "Place Pairing File",
     "sideload_title": "Installing App",
     "sideload_step_install": "Sign & Install App"
+    ,"custom_sideload_title": "Installing IPA",
+    "custom_sideload_success_title": "App Installed",
+    "custom_sideload_step_prepare": "Prepare IPA and apply customizations",
+    "custom_sideload_step_sign": "Register App IDs and sign app",
+    "custom_sideload_step_install": "Stream to device and install"
   },
   "certificates": {
     "manage": "Manage Certificates",

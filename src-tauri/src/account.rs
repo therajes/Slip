@@ -14,20 +14,174 @@ use rootcause::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Listener, State, Window};
+use tauri::{AppHandle, Emitter, Listener, Manager, State, WebviewWindow};
 use tauri_plugin_store::StoreExt;
 use tracing::debug;
 
 use crate::{
     error::AppError,
-    secure_storage::create_sideloading_storage,
+    secure_storage::{create_sideloading_storage, keyring_available},
     sideload::{SideloaderGuard, SideloaderMutex},
 };
+
+fn forget_saved_account(handle: &AppHandle, email: &str) -> Result<(), AppError> {
+    let store = handle.store("data.json").map_err(|error| {
+        AppError::Storage("Unable to open account store".into(), error.to_string())
+    })?;
+    let mut saved_ids = store
+        .get("ids")
+        .unwrap_or_else(|| Value::Array(Vec::new()))
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    saved_ids.retain(|value| value.as_str() != Some(email));
+    store.set("ids", Value::Array(saved_ids));
+    store.save().map_err(|error| {
+        AppError::Storage("Unable to save account list".into(), error.to_string())
+    })?;
+
+    let preferences = handle.store("preferences.json").map_err(|error| {
+        AppError::Storage("Unable to open preferences".into(), error.to_string())
+    })?;
+    if preferences
+        .get("defaultAccount")
+        .and_then(|value| value.as_str().map(ToOwned::to_owned))
+        .as_deref()
+        == Some(email)
+    {
+        preferences.delete("defaultAccount");
+        preferences.save().map_err(|error| {
+            AppError::Storage("Unable to save preferences".into(), error.to_string())
+        })?;
+    }
+    let _ = handle.emit("saved-accounts-changed", ());
+    Ok(())
+}
+
+pub fn migrate_legacy_accounts(handle: &AppHandle) -> Result<usize, AppError> {
+    let store = handle.store("data.json").map_err(|error| {
+        AppError::Storage("Unable to open account store".into(), error.to_string())
+    })?;
+    let mut saved_ids = store
+        .get("ids")
+        .unwrap_or_else(|| Value::Array(Vec::new()))
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if !keyring_available() {
+        if !saved_ids.is_empty() {
+            store.set("ids", Value::Array(Vec::new()));
+            store.save().map_err(|error| {
+                AppError::Storage(
+                    "Unable to clear stale saved accounts".into(),
+                    error.to_string(),
+                )
+            })?;
+            let preferences = handle.store("preferences.json").map_err(|error| {
+                AppError::Storage("Unable to open preferences".into(), error.to_string())
+            })?;
+            preferences.delete("defaultAccount");
+            preferences.save().map_err(|error| {
+                AppError::Storage("Unable to save preferences".into(), error.to_string())
+            })?;
+            let _ = handle.emit("saved-accounts-changed", ());
+        }
+        return Ok(0);
+    }
+    if !saved_ids.is_empty() {
+        return Ok(0);
+    }
+    let app_data_dir = handle.path().app_data_dir().map_err(|error| {
+        AppError::Filesystem(
+            "Unable to locate application data".into(),
+            error.to_string(),
+        )
+    })?;
+    let application_support = app_data_dir
+        .parent()
+        .ok_or_else(|| AppError::Misc("Unable to locate Application Support".into()))?;
+    let mut migrated = 0;
+
+    for (service, bundle_id) in [
+        ("iloader", "me.nabdev.iloader"),
+        ("ipa-pilot", "app.ipapilot.macos"),
+    ] {
+        let legacy_store_path = application_support.join(bundle_id).join("data.json");
+        let Ok(bytes) = std::fs::read(&legacy_store_path) else {
+            continue;
+        };
+        let Ok(legacy_store) = serde_json::from_slice::<Value>(&bytes) else {
+            continue;
+        };
+        let Some(legacy_ids) = legacy_store.get("ids").and_then(Value::as_array) else {
+            continue;
+        };
+
+        for value in legacy_ids {
+            let Some(email) = value.as_str() else {
+                continue;
+            };
+            let Ok(legacy_entry) = Entry::new(service, email) else {
+                continue;
+            };
+            let Ok(password) = legacy_entry.get_password() else {
+                continue;
+            };
+            let destination = Entry::new("sideloom", email).map_err(|error| {
+                AppError::KeyringWithMessage(
+                    "Unable to create Sideloom credential".into(),
+                    error.to_string(),
+                )
+            })?;
+            if destination.get_password().is_err() {
+                destination.set_password(&password).map_err(|error| {
+                    AppError::KeyringWithMessage(
+                        "Unable to migrate saved credential".into(),
+                        error.to_string(),
+                    )
+                })?;
+                migrated += 1;
+            }
+            let email_value = Value::String(email.to_string());
+            if !saved_ids.contains(&email_value) {
+                saved_ids.push(email_value);
+            }
+        }
+
+        if let (Ok(source), Ok(destination)) = (
+            Entry::new(service, "anisette_state"),
+            Entry::new("sideloom", "anisette_state"),
+        ) && destination.get_password().is_err()
+            && let Ok(state) = source.get_password()
+        {
+            let _ = destination.set_password(&state);
+        }
+    }
+
+    store.set("ids", Value::Array(saved_ids.clone()));
+    store.save().map_err(|error| {
+        AppError::Storage("Unable to save migrated accounts".into(), error.to_string())
+    })?;
+
+    if let Some(default_account) = saved_ids.first().cloned() {
+        let preferences = handle.store("preferences.json").map_err(|error| {
+            AppError::Storage("Unable to open preferences".into(), error.to_string())
+        })?;
+        if preferences.get("defaultAccount").is_none() {
+            preferences.set("defaultAccount", default_account);
+            preferences.save().map_err(|error| {
+                AppError::Storage("Unable to save default account".into(), error.to_string())
+            })?;
+        }
+    }
+
+    Ok(migrated)
+}
 
 #[tauri::command]
 pub async fn login_new(
     handle: AppHandle,
-    window: Window,
+    window: WebviewWindow,
     sideloader_state: State<'_, SideloaderMutex>,
     email: String,
     password: String,
@@ -38,8 +192,8 @@ pub async fn login_new(
     let mut sideloader_guard = sideloader_state.lock().unwrap();
     *sideloader_guard = Some(account);
 
-    if save_credentials {
-        let pass_entry = Entry::new("iloader", &email).map_err(|e| {
+    if save_credentials && keyring_available() {
+        let pass_entry = Entry::new("sideloom", &email).map_err(|e| {
             AppError::KeyringWithMessage(
                 "Failed to create entry for credentials".into(),
                 e.to_string(),
@@ -62,6 +216,10 @@ pub async fn login_new(
             existing_ids.push(value);
         }
         store.set("ids", Value::Array(existing_ids));
+        store.save().map_err(|error| {
+            AppError::Storage("Unable to save account".into(), error.to_string())
+        })?;
+        let _ = handle.emit("saved-accounts-changed", ());
     }
     Ok(())
 }
@@ -69,20 +227,40 @@ pub async fn login_new(
 #[tauri::command]
 pub async fn login_stored(
     handle: AppHandle,
-    window: Window,
+    window: WebviewWindow,
     email: String,
     anisette_server: String,
     sideloader_state: State<'_, SideloaderMutex>,
 ) -> Result<(), AppError> {
-    let pass_entry = Entry::new("iloader", &email).map_err(|e| {
+    if !keyring_available() {
+        forget_saved_account(&handle, &email)?;
+        return Err(AppError::Keyring(
+            "Saved Apple Account passwords are disabled in Keychain-free mode. Please sign in again."
+                .into(),
+        ));
+    }
+    let pass_entry = Entry::new("sideloom", &email).map_err(|e| {
         AppError::KeyringWithMessage(
             "Failed to create keyring entry for credentials".to_string(),
             e.to_string(),
         )
     })?;
-    let password = pass_entry.get_password().map_err(|e| {
-        AppError::KeyringWithMessage("Failed to get credentials".to_string(), e.to_string())
-    })?;
+    let password = match pass_entry.get_password() {
+        Ok(password) => password,
+        Err(keyring::Error::NoEntry) => {
+            forget_saved_account(&handle, &email)?;
+            return Err(AppError::Keyring(
+                "The saved password was missing, so Sideloom removed the stale login. Please add the Apple Account again."
+                    .into(),
+            ));
+        }
+        Err(error) => {
+            return Err(AppError::KeyringWithMessage(
+                "Failed to get credentials".into(),
+                error.to_string(),
+            ));
+        }
+    };
     let account = login(&handle, &window, &email, &password, anisette_server).await?;
     let mut sideloader_guard = sideloader_state.lock().unwrap();
     *sideloader_guard = Some(account);
@@ -92,27 +270,22 @@ pub async fn login_stored(
 
 #[tauri::command]
 pub fn delete_account(handle: AppHandle, email: String) -> Result<(), AppError> {
-    let store = handle
-        .store("data.json")
-        .map_err(|e| AppError::Misc(format!("Failed to get store: {:?}", e)))?;
-    let mut existing_ids = store
-        .get("ids")
-        .unwrap_or_else(|| Value::Array(vec![]))
-        .as_array()
-        .cloned()
-        .unwrap_or_else(std::vec::Vec::new);
-    existing_ids.retain(|v| v.as_str().is_none_or(|s| s != email));
-    store.set("ids", Value::Array(existing_ids));
-    let pass_entry = Entry::new("iloader", &email).map_err(|e| {
+    if !keyring_available() {
+        return forget_saved_account(&handle, &email);
+    }
+    let pass_entry = Entry::new("sideloom", &email).map_err(|e| {
         AppError::KeyringWithMessage(
             "Failed to create keyring entry for credentials".into(),
             e.to_string(),
         )
     })?;
-    pass_entry.delete_credential().map_err(|e| {
-        AppError::KeyringWithMessage("Failed to delete credentials".into(), e.to_string())
-    })?;
-    Ok(())
+    match pass_entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => forget_saved_account(&handle, &email),
+        Err(error) => Err(AppError::KeyringWithMessage(
+            "Failed to delete credentials".into(),
+            error.to_string(),
+        )),
+    }
 }
 
 #[tauri::command]
@@ -131,8 +304,19 @@ pub fn invalidate_account(sideloader_state: State<'_, SideloaderMutex>) {
 }
 
 #[tauri::command]
-pub fn reset_anisette_state() -> Result<bool, AppError> {
-    let state_entry = Entry::new("iloader", "anisette_state").map_err(|e| {
+pub fn reset_anisette_state(handle: AppHandle) -> Result<bool, AppError> {
+    if !keyring_available() {
+        let storage = create_sideloading_storage(&handle)?;
+        let existed = storage
+            .retrieve_data("anisette_state")
+            .map_err(AppError::from)?
+            .is_some();
+        if existed {
+            storage.delete("anisette_state").map_err(AppError::from)?;
+        }
+        return Ok(existed);
+    }
+    let state_entry = Entry::new("sideloom", "anisette_state").map_err(|e| {
         AppError::KeyringWithMessage(
             "Failed to create keyring entry for anisette".into(),
             e.to_string(),
@@ -157,7 +341,7 @@ pub fn reset_anisette_state() -> Result<bool, AppError> {
 
 async fn login(
     app: &AppHandle,
-    window: &Window,
+    window: &WebviewWindow,
     email: &str,
     password: &str,
     anisette_server: String,
@@ -243,7 +427,7 @@ async fn login(
     // TODO: Team Selection
 
     let sideloader = SideloaderBuilder::new(dev_session, email.to_lowercase())
-        .machine_name("iloader".into())
+        .machine_name("Sideloom".into())
         .storage(create_sideloading_storage(app)?)
         .max_certs_behavior(MaxCertsBehavior::Prompt(Box::new(max_certs_callback)))
         .build();

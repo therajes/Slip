@@ -1,3 +1,4 @@
+#[cfg(feature = "tauri-ui")]
 use std::sync::Mutex;
 
 use idevice::{
@@ -7,10 +8,14 @@ use idevice::{
     usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection},
 };
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "tauri-ui")]
 use tauri::{AppHandle, State};
+#[cfg(feature = "tauri-ui")]
 use tokio_util::sync::CancellationToken;
 
-use crate::{error::AppError, pairing::pairing_file};
+use crate::error::AppError;
+#[cfg(feature = "tauri-ui")]
+use crate::pairing::pairing_file;
 
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +27,7 @@ pub struct DeviceInfo {
     pub version: String,
 }
 
+#[cfg(feature = "tauri-ui")]
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceInfoWithPairing {
@@ -29,10 +35,12 @@ pub struct DeviceInfoWithPairing {
     pub pairing: Vec<u8>,
 }
 
+#[cfg(feature = "tauri-ui")]
 pub type DeviceInfoMutex = Mutex<Option<DeviceInfoWithPairing>>;
+#[cfg(feature = "tauri-ui")]
 pub type PairingCancelToken = Mutex<Option<CancellationToken>>;
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-ui", tauri::command)]
 pub async fn list_devices() -> Result<Vec<Result<DeviceInfo, AppError>>, AppError> {
     let mut usbmuxd = get_usbmuxd().await?;
 
@@ -55,7 +63,7 @@ pub async fn list_devices() -> Result<Vec<Result<DeviceInfo, AppError>>, AppErro
         .map(|d| {
             let usbmuxd_addr = usbmuxd_addr.clone();
             async move {
-                let provider = d.to_provider(usbmuxd_addr, "iloader");
+                let provider = d.to_provider(usbmuxd_addr, "Sideloom");
                 let device_uid = d.device_id;
                 let connection_type = match d.connection_type {
                     Connection::Usb => "USB",
@@ -120,6 +128,7 @@ pub async fn list_devices() -> Result<Vec<Result<DeviceInfo, AppError>>, AppErro
     Ok(device_infos)
 }
 
+#[cfg(feature = "tauri-ui")]
 #[tauri::command]
 pub async fn set_selected_device(
     app: AppHandle,
@@ -162,6 +171,7 @@ pub async fn set_selected_device(
     Ok(())
 }
 
+#[cfg(feature = "tauri-ui")]
 #[tauri::command]
 pub async fn cancel_pairing(cancel_state: State<'_, PairingCancelToken>) -> Result<(), AppError> {
     let mut guard = cancel_state.lock().unwrap();
@@ -177,6 +187,66 @@ pub async fn get_usbmuxd() -> Result<UsbmuxdConnection, AppError> {
         .map_err(|e| AppError::Usbmuxd("Failed to connect to usbmuxd".into(), e.to_string()))
 }
 
+pub async fn enable_wifi_debugging(udid: &str) -> Result<(), AppError> {
+    let mut usbmuxd = get_usbmuxd().await?;
+    let devices = usbmuxd.get_devices().await.map_err(|error| {
+        AppError::Usbmuxd(
+            "Failed to list devices from usbmuxd".into(),
+            error.to_string(),
+        )
+    })?;
+    let device = devices
+        .iter()
+        .find(|device| device.udid == udid && matches!(device.connection_type, Connection::Usb))
+        .cloned()
+        .ok_or_else(|| {
+            AppError::DeviceComs(
+                "Connect this iPhone by USB before enabling its Wi-Fi connection".into(),
+            )
+        })?;
+    let pairing_file = usbmuxd.get_pair_record(udid).await.map_err(|error| {
+        AppError::LockdownPairing(
+            "Failed to read the trusted pairing record".into(),
+            error.to_string(),
+        )
+    })?;
+    let provider = device.to_provider(
+        UsbmuxdAddr::from_env_var().map_err(|error| {
+            AppError::Usbmuxd(
+                "Invalid usbmuxd address from environment".into(),
+                error.to_string(),
+            )
+        })?,
+        "Slip",
+    );
+    let mut lockdown = LockdownClient::connect(&provider).await.map_err(|error| {
+        AppError::DeviceComsWithMessage("Failed to connect to the iPhone".into(), error.to_string())
+    })?;
+    lockdown
+        .start_session(&pairing_file)
+        .await
+        .map_err(|error| {
+            AppError::LockdownPairing(
+                "Failed to start the trusted iPhone session".into(),
+                error.to_string(),
+            )
+        })?;
+    lockdown
+        .set_value(
+            "EnableWifiDebugging",
+            true.into(),
+            Some("com.apple.mobile.wireless_lockdown"),
+        )
+        .await
+        .map_err(|error| {
+            AppError::LockdownPairing(
+                "Failed to enable the iPhone Wi-Fi connection".into(),
+                error.to_string(),
+            )
+        })?;
+    Ok(())
+}
+
 pub async fn get_provider(device_info: &DeviceInfo) -> Result<UsbmuxdProvider, AppError> {
     get_provider_from_connection(device_info, &mut (get_usbmuxd().await?)).await
 }
@@ -185,13 +255,25 @@ pub async fn get_provider_from_connection(
     device_info: &DeviceInfo,
     connection: &mut UsbmuxdConnection,
 ) -> Result<UsbmuxdProvider, AppError> {
-    let device = connection
-        .get_device(&device_info.udid)
-        .await
-        .map_err(|e| {
-            AppError::DeviceComsWithMessage("Failed to get device".into(), e.to_string())
-        })?;
+    let devices = connection.get_devices().await.map_err(|e| {
+        AppError::DeviceComsWithMessage("Failed to get device".into(), e.to_string())
+    })?;
+    let device = devices
+        .iter()
+        .find(|device| device.device_id == device_info.id)
+        .or_else(|| {
+            devices.iter().find(|device| {
+                device.udid == device_info.udid && matches!(device.connection_type, Connection::Usb)
+            })
+        })
+        .or_else(|| {
+            devices
+                .iter()
+                .find(|device| device.udid == device_info.udid)
+        })
+        .cloned()
+        .ok_or_else(|| AppError::DeviceComs("Selected device is no longer connected".into()))?;
 
-    let provider = device.to_provider(UsbmuxdAddr::from_env_var().unwrap(), "iloader");
+    let provider = device.to_provider(UsbmuxdAddr::from_env_var().unwrap(), "Sideloom");
     Ok(provider)
 }

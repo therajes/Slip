@@ -10,7 +10,7 @@ import { AppError } from "./errors";
 export type DeviceInfo = {
   name: string;
   id: number;
-  uuid: string;
+  udid: string;
   connectionType: "USB" | "Network" | "Unknown";
   version: string;
 };
@@ -108,18 +108,32 @@ export const Device = ({
           }
         }
 
-        setDevices(devices);
+        const connectionRank = (device: DeviceInfo) =>
+          device.connectionType === "USB"
+            ? 0
+            : device.connectionType === "Network"
+              ? 1
+              : 2;
+        devices.sort((left, right) => connectionRank(left) - connectionRank(right));
+        const uniqueDevices = devices.filter(
+          (device, index, all) =>
+            all.findIndex((candidate) => candidate.udid === device.udid) === index,
+        );
+
+        setDevices(uniqueDevices);
         if (selectedDevice) {
-          const stillAvailable = devices.find(
-            (d) => d.id === selectedDevice.id,
+          const stillAvailable = uniqueDevices.find(
+            (device) => device.udid === selectedDevice.udid,
           );
           if (!stillAvailable) {
             selectDevice(null);
+          } else if (stillAvailable.id !== selectedDevice.id) {
+            selectDevice(stillAvailable);
           }
         }
-        if (devices.length > 0) {
+        if (uniqueDevices.length > 0) {
           const devicesWithPairing = await Promise.all(
-            devices.map(async (device) => {
+            uniqueDevices.map(async (device) => {
               const hasPairing = await invoke<boolean>("has_stored_rppairing", {
                 device,
               });
@@ -135,7 +149,7 @@ export const Device = ({
           }
         }
         listingDevices.current = false;
-        resolve(devices.length);
+        resolve(uniqueDevices.length);
       } catch (e) {
         setDevices([]);
         selectDevice(null);
@@ -197,7 +211,10 @@ export const Device = ({
           </button>
         </div>
       </Modal>
-      <h2 style={{ marginTop: 0 }}>{t("device.title")}</h2>
+      <div className="device-list-header">
+        <span>{devices.length === 0 ? "Waiting for a device" : `${devices.length} available device${devices.length === 1 ? "" : "s"}`}</span>
+        <button disabled={waitingToPair !== null} onClick={loadDevices}>{t("common.refresh")}</button>
+      </div>
       <div className="credentials-container">
         {devices.length === 0 && (
           <div>{t("device.no_devices_found_period")}</div>
@@ -225,9 +242,6 @@ export const Device = ({
             </button>
           );
         })}
-        <button disabled={waitingToPair !== null} onClick={loadDevices}>
-          {t("common.refresh")}
-        </button>
       </div>
     </>
   );

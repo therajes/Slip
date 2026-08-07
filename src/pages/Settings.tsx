@@ -99,7 +99,8 @@ export const Settings = ({
 
   useEffect(() => {
     (async () => {
-      await invoke("force_disable_keyring", { force: overrideKeyring });
+      if (!overrideKeyring) setOverrideKeyring(true);
+      await invoke("force_disable_keyring", { force: true });
       checkKeyring();
     })();
   }, [overrideKeyring]);
@@ -267,10 +268,8 @@ export const Settings = ({
             {t("settings.dont_use_keyring")}
             <input
               type="checkbox"
-              checked={overrideKeyring}
-              onChange={(e) => {
-                setOverrideKeyring(e.target.checked);
-              }}
+              checked
+              disabled
             />
           </label>
           <span className="settings-hint">

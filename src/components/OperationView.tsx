@@ -120,6 +120,22 @@ export default ({
 
                 <div className="operation-step-internal">
                   <p>{t(step.titleKey)}</p>
+                  {started && !completed && !failed &&
+                    operationState.progress[step.id] !== undefined && (
+                      <div className="operation-progress-row">
+                        <div className="operation-progress-track">
+                          <div
+                            className="operation-progress-fill"
+                            style={{
+                              width: `${Math.round(operationState.progress[step.id] * 100)}%`,
+                            }}
+                          />
+                        </div>
+                        <span>
+                          {Math.round(operationState.progress[step.id] * 100)}%
+                        </span>
+                      </div>
+                    )}
                   {failed && (
                     <>
                       <pre className="operation-extra-details">

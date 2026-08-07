@@ -1,0 +1,518 @@
+import AppKit
+import Foundation
+import SwiftUI
+
+@MainActor
+final class AppModel: ObservableObject {
+    @Published var devices: [DeviceInfo] = []
+    @Published var selectedDevice: DeviceInfo?
+    @Published var ipa: IpaInfo?
+    @Published var customName = ""
+    @Published var customBundleID = ""
+    @Published var customIconURL: URL?
+    @Published var removedExtensions: Set<String> = []
+    @Published var increasedMemoryLimit = false
+    @Published var minimumOSVersion = ""
+    @Published var removeSupportedDevices = false
+    @Published var enableFileSharing = false
+    @Published var plistOverrides: [PlistOverride] = []
+    @Published var keepAutomaticallyRefreshed = true
+    @Published var accounts: [String] = []
+    @Published var selectedAccount = ""
+    @Published var isRefreshing = false
+    @Published var isInspecting = false
+    @Published var isInstalling = false
+    @Published var isEnablingWiFi = false
+    @Published var isExporting = false
+    @Published var isDownloading = false
+    @Published var currentStage = "Ready"
+    @Published var overallProgress = 0.0
+    @Published var activity: [String] = []
+    @Published var errorMessage: String?
+    @Published var showTwoFactor = false
+    @Published var certificates: [CertificateInfo] = []
+    @Published var showCertificates = false
+    @Published var managedInstallations: [ManagedInstallation] = []
+    @Published var installedApps: [InstalledAppInfo] = []
+    @Published var isLoadingInstalledApps = false
+    @Published var refreshingManagedIDs: Set<String> = []
+    @Published var hideSensitiveInfo = UserDefaults.standard.bool(forKey: "hideSensitiveInfo") {
+        didSet { UserDefaults.standard.set(hideSensitiveInfo, forKey: "hideSensitiveInfo") }
+    }
+
+    let core = CoreClient()
+    let anisetteServer = "ani.sidestore.io"
+    private var stageProgress: [String: Double] = [:]
+
+    init(startupTasks: Bool = true) {
+        reloadAccounts()
+        reloadManagedInstallations()
+        if startupTasks {
+            do {
+                try AutoRefreshScheduler.installIfAppropriate()
+            } catch {
+                appendActivity("Auto Refresh scheduler: \(error.localizedDescription)")
+            }
+            Task { await refreshDevices() }
+        }
+    }
+
+    func reloadAccounts() {
+        accounts = KeychainStore.accounts()
+        let preferred = UserDefaults.standard.string(forKey: "selectedAccount") ?? ""
+        selectedAccount = accounts.contains(preferred) ? preferred : (accounts.first ?? "")
+    }
+
+    func saveAccount(email: String, password: String) {
+        do {
+            let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard normalized.contains("@"), !password.isEmpty else {
+                throw SideloomError.message("Enter a valid Apple Account and password.")
+            }
+            try KeychainStore.save(account: normalized, password: password)
+            reloadAccounts()
+            selectedAccount = normalized
+            UserDefaults.standard.set(normalized, forKey: "selectedAccount")
+            appendActivity("Saved \(normalized) in macOS Keychain")
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteAccount(_ email: String) {
+        do {
+            try KeychainStore.delete(account: email)
+            reloadAccounts()
+            appendActivity("Removed \(email) from macOS Keychain")
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func chooseAccount(_ email: String) {
+        selectedAccount = email
+        UserDefaults.standard.set(email, forKey: "selectedAccount")
+    }
+
+    func refreshDevices() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            let event = try await core.run(["devices"])
+            devices = event.devices ?? []
+            if let current = selectedDevice,
+               let replacement = devices.first(where: { $0.identity == current.identity }) {
+                selectedDevice = replacement
+            } else {
+                selectedDevice = devices.first(where: {
+                    $0.connectionType.caseInsensitiveCompare("Network") == .orderedSame
+                }) ?? devices.first
+            }
+            if let errors = event.errors, !errors.isEmpty {
+                appendActivity(errors.joined(separator: " • "))
+            }
+        } catch {
+            devices = []
+            selectedDevice = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadIPA(_ url: URL) async {
+        guard url.pathExtension.lowercased() == "ipa" else {
+            errorMessage = "Choose a valid .ipa file."
+            return
+        }
+        isInspecting = true
+        defer { isInspecting = false }
+        do {
+            let event = try await core.run(["inspect", url.path])
+            guard let info = event.ipa else {
+                throw SideloomError.message("The IPA could not be inspected.")
+            }
+            ipa = info
+            customName = ""
+            customBundleID = ""
+            customIconURL = nil
+            removedExtensions = Set(info.extensions.map(\.path))
+            minimumOSVersion = ""
+            removeSupportedDevices = false
+            enableFileSharing = false
+            plistOverrides = []
+            appendActivity("Loaded \(info.appName) \(info.version)")
+        } catch {
+            ipa = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func downloadIPA(from input: String) async {
+        guard !isDownloading else { return }
+        guard let url = URL(string: input.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "https" || scheme == "http" else {
+            errorMessage = "Enter a valid HTTP or HTTPS IPA URL."
+            return
+        }
+        isDownloading = true
+        currentStage = "Downloading IPA"
+        defer { isDownloading = false }
+
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                appendActivity("Downloading IPA (attempt \(attempt) of 3)")
+                let (temporaryURL, response) = try await URLSession.shared.download(from: url)
+                if let response = response as? HTTPURLResponse,
+                   !(200...299).contains(response.statusCode) {
+                    throw SideloomError.message("Download failed with HTTP \(response.statusCode).")
+                }
+                let support = try FileManager.default.url(
+                    for: .applicationSupportDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: true
+                ).appending(path: "app.sideloom.native/Imports", directoryHint: .isDirectory)
+                try FileManager.default.createDirectory(
+                    at: support,
+                    withIntermediateDirectories: true,
+                    attributes: [.posixPermissions: 0o700]
+                )
+                let suggested = url.lastPathComponent.lowercased().hasSuffix(".ipa")
+                    ? url.lastPathComponent
+                    : "Downloaded.ipa"
+                let destination = support.appending(
+                    path: "\(UUID().uuidString)-\(suggested)",
+                    directoryHint: .notDirectory
+                )
+                try FileManager.default.moveItem(at: temporaryURL, to: destination)
+                currentStage = "Inspecting download"
+                await loadIPA(destination)
+                if ipa?.path == destination.path {
+                    appendActivity("Downloaded and verified \(destination.lastPathComponent)")
+                    return
+                }
+                throw SideloomError.message("The downloaded file is not a valid IPA.")
+            } catch {
+                lastError = error
+                if attempt < 3 {
+                    try? await Task.sleep(for: .seconds(attempt))
+                }
+            }
+        }
+        currentStage = "Download failed"
+        errorMessage = lastError?.localizedDescription ?? "The IPA could not be downloaded."
+        appendActivity("Download failed after three attempts")
+    }
+
+    func enableWiFiConnection() async {
+        guard !isEnablingWiFi else { return }
+        guard let device = selectedDevice else {
+            errorMessage = "Connect and select an iPhone first."
+            return
+        }
+        guard device.connectionType.caseInsensitiveCompare("USB") == .orderedSame else {
+            errorMessage = "Connect this iPhone by USB before enabling its Wi-Fi connection."
+            return
+        }
+        isEnablingWiFi = true
+        defer { isEnablingWiFi = false }
+        do {
+            let event = try await core.run(["enable-wifi", device.udid])
+            appendActivity(event.message ?? "Enabled Wi-Fi connection for \(device.name)")
+            await refreshDevices()
+        } catch {
+            errorMessage = error.localizedDescription
+            appendActivity("Wi-Fi setup failed: \(error.localizedDescription)")
+        }
+    }
+
+    func loadInstalledApps() async {
+        guard !isLoadingInstalledApps else { return }
+        guard let device = selectedDevice else {
+            installedApps = []
+            return
+        }
+        isLoadingInstalledApps = true
+        defer { isLoadingInstalledApps = false }
+        do {
+            let event = try await core.run(["apps"], input: device)
+            installedApps = event.apps ?? []
+            appendActivity("Loaded \(installedApps.count) user apps from \(device.name)")
+        } catch {
+            installedApps = []
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func install() {
+        guard !isInstalling else { return }
+        guard let ipa, let selectedDevice else {
+            errorMessage = ipa == nil ? "Choose an IPA first." : "Connect and select an iPhone."
+            return
+        }
+        guard !selectedAccount.isEmpty else {
+            errorMessage = "Add an Apple Account in Keychain first."
+            return
+        }
+
+        do {
+            let password = try KeychainStore.password(for: selectedAccount)
+            let storageURL = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            ).appending(path: "app.sideloom.native/Core", directoryHint: .isDirectory)
+            let options = installOptions(for: ipa)
+            let request = InstallRequest(
+                email: selectedAccount,
+                password: password,
+                anisetteServer: anisetteServer,
+                storagePath: storageURL.path,
+                device: selectedDevice,
+                options: options
+            )
+            isInstalling = true
+            overallProgress = 0
+            stageProgress = [:]
+            currentStage = "Starting"
+            appendActivity("Starting install on \(selectedDevice.name) via \(selectedDevice.connectionType)")
+            Task { await consumeInstall(request, ipa: ipa) }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func exportModifiedIPA(to destination: URL) {
+        guard !isExporting else { return }
+        guard let ipa else {
+            errorMessage = "Choose an IPA first."
+            return
+        }
+        isExporting = true
+        currentStage = "Exporting IPA"
+        let request = ExportRequest(
+            destination: destination.path,
+            options: installOptions(for: ipa)
+        )
+        Task {
+            defer { isExporting = false }
+            do {
+                let event = try await core.run(["export"], input: request)
+                currentStage = "Exported"
+                appendActivity(event.message ?? "Exported modified IPA to \(destination.lastPathComponent)")
+                NSWorkspace.shared.activateFileViewerSelecting([destination])
+            } catch {
+                currentStage = "Export failed"
+                errorMessage = error.localizedDescription
+                appendActivity("Export failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func copySelectedUDID() {
+        guard let udid = selectedDevice?.udid else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(udid, forType: .string)
+        appendActivity("Copied iPhone UDID")
+    }
+
+    func addPlistOverride() {
+        plistOverrides.append(PlistOverride())
+    }
+
+    func removePlistOverride(_ id: UUID) {
+        plistOverrides.removeAll { $0.id == id }
+    }
+
+    func refreshAllManagedInstallations() {
+        let ids = Set(managedInstallations.filter(\.enabled).map(\.id))
+        guard !ids.isEmpty else { return }
+        refreshingManagedIDs.formUnion(ids)
+        Task {
+            let result = await AutoRefreshWorker.runDue(forceIDs: ids)
+            refreshingManagedIDs.subtract(ids)
+            reloadManagedInstallations()
+            appendActivity("Refresh All finished: \(result.succeeded)/\(result.attempted) succeeded")
+        }
+    }
+
+    private func consumeInstall(_ request: InstallRequest, ipa: IpaInfo) async {
+        defer { isInstalling = false }
+        do {
+            let stream = try core.installStream(request: request)
+            for try await event in stream {
+                switch event.type {
+                case "progress":
+                    updateProgress(stage: event.stage ?? "working", value: event.value ?? 0, message: event.message)
+                case "twoFactorRequired":
+                    showTwoFactor = true
+                    appendActivity("Apple requested a verification code")
+                case "certificateSelectionRequired":
+                    certificates = event.certificates ?? []
+                    showCertificates = true
+                case "completed":
+                    overallProgress = 1
+                    currentStage = "Installed"
+                    appendActivity("Installation completed successfully")
+                    do {
+                        let entry = try AutoRefreshStore.recordSuccessfulInstall(
+                            ipa: ipa,
+                            request: request,
+                            enabled: keepAutomaticallyRefreshed
+                        )
+                        reloadManagedInstallations()
+                        if entry.enabled {
+                            appendActivity("Auto Refresh scheduled for \(entry.nextRefreshAt.formatted(date: .abbreviated, time: .shortened))")
+                        }
+                    } catch {
+                        appendActivity("Could not save Auto Refresh schedule: \(error.localizedDescription)")
+                    }
+                case "error":
+                    let message = event.message ?? "Installation failed"
+                    showTwoFactor = false
+                    showCertificates = false
+                    errorMessage = message
+                    appendActivity("Error: \(message)")
+                default:
+                    break
+                }
+            }
+        } catch {
+            showTwoFactor = false
+            showCertificates = false
+            if errorMessage == nil { errorMessage = error.localizedDescription }
+            if let errorMessage { appendActivity("Error: \(errorMessage)") }
+            appendActivity("Installation stopped")
+        }
+    }
+
+    func submitTwoFactor(_ code: String?) {
+        defer { showTwoFactor = false }
+        do {
+            try core.submitTwoFactor(code)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func submitCertificates(_ serials: [String]?) {
+        defer { showCertificates = false }
+        do {
+            try core.submitCertificates(serials)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func cancelInstall() {
+        core.cancel()
+        isInstalling = false
+        currentStage = "Cancelled"
+        appendActivity("Installation cancelled")
+    }
+
+    func reloadManagedInstallations() {
+        managedInstallations = AutoRefreshStore.load().sorted {
+            $0.nextRefreshAt < $1.nextRefreshAt
+        }
+    }
+
+    func setAutoRefreshEnabled(_ enabled: Bool, for id: String) {
+        var installations = AutoRefreshStore.load()
+        guard let index = installations.firstIndex(where: { $0.id == id }) else { return }
+        installations[index].enabled = enabled
+        installations[index].status = enabled ? "Scheduled" : "Paused"
+        installations[index].lastError = nil
+        do {
+            try AutoRefreshStore.save(installations)
+            reloadManagedInstallations()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func forgetManagedInstallation(_ id: String) {
+        var installations = AutoRefreshStore.load()
+        installations.removeAll { $0.id == id }
+        do {
+            try AutoRefreshStore.save(installations)
+            reloadManagedInstallations()
+            appendActivity("Removed an Auto Refresh schedule")
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func refreshManagedInstallationNow(_ id: String) {
+        guard !refreshingManagedIDs.contains(id) else { return }
+        refreshingManagedIDs.insert(id)
+        Task {
+            let result = await AutoRefreshWorker.runDue(forceIDs: [id])
+            refreshingManagedIDs.remove(id)
+            reloadManagedInstallations()
+            if result.succeeded > 0 {
+                appendActivity("Auto Refresh completed successfully")
+            } else if result.attempted > 0 {
+                appendActivity("Auto Refresh did not complete; review its status")
+            }
+        }
+    }
+
+    private func updateProgress(stage: String, value: Double, message: String?) {
+        stageProgress[stage] = value
+        let prepare = stageProgress["prepare", default: 0]
+        let sign = stageProgress["sign", default: 0]
+        let install = stageProgress["install", default: 0]
+        let account = stageProgress["account", default: stage == "account" ? value : 1]
+        overallProgress = account * 0.08 + prepare * 0.12 + sign * 0.40 + install * 0.40
+        currentStage = message ?? stage.capitalized
+    }
+
+    private func installOptions(for ipa: IpaInfo) -> IpaInstallOptions {
+        IpaInstallOptions(
+            appPath: ipa.path,
+            displayName: customName.trimmed.nilIfEmpty,
+            bundleId: customBundleID.trimmed.nilIfEmpty,
+            removedExtensions: Array(removedExtensions).sorted(),
+            customIconPath: customIconURL?.path,
+            increasedMemoryLimit: increasedMemoryLimit,
+            minimumOsVersion: minimumOSVersion.trimmed.nilIfEmpty,
+            removeSupportedDevices: removeSupportedDevices,
+            enableFileSharing: enableFileSharing,
+            plistOverrides: plistOverrides.filter { !$0.key.trimmed.isEmpty }
+        )
+    }
+
+    var visibleActivity: [String] {
+        hideSensitiveInfo ? activity.map(redacted) : activity
+    }
+
+    private func redacted(_ entry: String) -> String {
+        var result = entry.replacingOccurrences(
+            of: #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#,
+            with: "••••@••••",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        for device in devices {
+            result = result.replacingOccurrences(of: device.udid, with: "••••••••-••••")
+        }
+        result = result.replacingOccurrences(
+            of: FileManager.default.homeDirectoryForCurrentUser.path,
+            with: "~"
+        )
+        return result
+    }
+
+    private func appendActivity(_ entry: String) {
+        activity.insert(entry, at: 0)
+        if activity.count > 100 { activity.removeLast(activity.count - 100) }
+    }
+}
+
+private extension String {
+    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}

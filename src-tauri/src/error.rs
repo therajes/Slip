@@ -73,6 +73,7 @@ impl From<Report> for AppError {
         let report_str = report.to_string();
 
         for cause in report.iter_reports() {
+            #[cfg(feature = "tauri-ui")]
             if cause.downcast_current_context::<keyring::Error>().is_some() {
                 return AppError::Keyring(report_str);
             }

@@ -17,5 +17,5 @@ fn main() {
         .install_default()
         .expect("Failed to install rustls crypto provider");
     isideload::init().expect("Failed to initialize error reporting");
-    iloader_lib::run()
+    sideloom_lib::run()
 }

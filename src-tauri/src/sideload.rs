@@ -1,13 +1,21 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::{
+    path::PathBuf,
+    sync::Mutex,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::{
     device::{DeviceInfoMutex, get_provider, get_provider_from_connection, get_usbmuxd},
     error::AppError,
+    fast_install::install_signed_app_fast,
+    ipa::{IpaInstallOptions, prepare_ipa},
     operation::Operation,
     pairing::{get_sidestore_info, place_file},
 };
 use isideload::sideload::{application::SpecialApp, sideloader::Sideloader};
-use tauri::{AppHandle, Manager, State, Window};
+use isideload::{dev::devices::DevicesApi, util::device::IdeviceInfo};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tracing::info;
 
 pub type SideloaderMutex = Mutex<Option<Sideloader>>;
 
@@ -72,7 +80,7 @@ pub async fn sideload(
 
 #[tauri::command]
 pub async fn sideload_operation(
-    window: Window,
+    window: WebviewWindow,
     device_state: State<'_, DeviceInfoMutex>,
     sideloader_state: State<'_, SideloaderMutex>,
     app_path: String,
@@ -88,9 +96,107 @@ pub async fn sideload_operation(
 }
 
 #[tauri::command]
+pub async fn custom_sideload_operation(
+    handle: AppHandle,
+    window: WebviewWindow,
+    device_state: State<'_, DeviceInfoMutex>,
+    sideloader_state: State<'_, SideloaderMutex>,
+    options: IpaInstallOptions,
+) -> Result<(), AppError> {
+    info!(ipa = %options.app_path, "Custom sideload requested");
+    let op = Operation::new("custom_sideload".to_string(), &window);
+    op.start("prepare")?;
+    let prepared_path = op.fail_if_err("prepare", prepare_ipa(&handle, &options))?;
+    info!(prepared = %prepared_path.display(), "IPA preparation completed");
+    op.complete("prepare")?;
+    op.start("sign")?;
+
+    let result: Result<(), (&str, AppError)> = async {
+        let device = {
+            let device_lock = device_state.lock().unwrap();
+            device_lock
+                .clone()
+                .ok_or(("sign", AppError::NoDeviceSelected))?
+        };
+        info!(device = %device.info.name, connection = %device.info.connection_type, "Signing for selected device");
+        let provider = get_provider(&device.info)
+            .await
+            .map_err(|error| ("sign", error))?;
+        let mut sideloader =
+            SideloaderGuard::take(&sideloader_state).map_err(|error| ("sign", error))?;
+
+        let team = sideloader
+            .get_mut()
+            .get_team()
+            .await
+            .map_err(|error| ("sign", AppError::from(error)))?;
+        let device_info = IdeviceInfo::from_device(&provider)
+            .await
+            .map_err(|error| ("sign", AppError::from(error)))?;
+        sideloader
+            .get_mut()
+            .get_dev_session()
+            .ensure_device_registered(&team, &device_info.name, &device_info.udid, None)
+            .await
+            .map_err(|error| ("sign", AppError::from(error)))?;
+
+        let sign_window = window.clone();
+        let (signed_app_path, _) = sideloader
+            .get_mut()
+            .sign_app(
+                prepared_path.clone(),
+                Some(team),
+                options.increased_memory_limit,
+                Some(move |progress| {
+                    let sign_window = sign_window.clone();
+                    async move {
+                        let _ = Operation::new("custom_sideload".to_string(), &sign_window)
+                            .progress("sign", progress);
+                    }
+                }),
+            )
+            .await
+            .map_err(|error| ("sign", AppError::from(error)))?;
+        info!(signed = %signed_app_path.display(), "IPA signing completed");
+        op.complete("sign").map_err(|error| ("sign", error))?;
+
+        op.start("install").map_err(|error| ("install", error))?;
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let optimized_ipa = handle
+            .path()
+            .temp_dir()
+            .map_err(|error| ("install", AppError::Filesystem("Unable to locate temporary folder".into(), error.to_string())))?
+            .join(format!("sideloom-fast-{}-{unique}.ipa", std::process::id()));
+        let install_result = install_signed_app_fast(
+            &provider,
+            &signed_app_path,
+            &optimized_ipa,
+            &window,
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&signed_app_path);
+        let _ = std::fs::remove_file(&optimized_ipa);
+        install_result.map_err(|error| ("install", AppError::from(error)))?;
+        info!(device = %device.info.name, "IPA installation completed");
+        op.complete("install").map_err(|error| ("install", error))?;
+        Ok(())
+    }
+    .await;
+
+    let _ = std::fs::remove_file(&prepared_path);
+    match result {
+        Ok(()) => Ok(()),
+        Err((step, error)) => op.fail(step, error),
+    }
+}
+
+#[tauri::command]
 pub async fn install_sidestore_operation(
     handle: AppHandle,
-    window: Window,
+    window: WebviewWindow,
     device_state: State<'_, DeviceInfoMutex>,
     sideloader_state: State<'_, SideloaderMutex>,
     nightly: bool,

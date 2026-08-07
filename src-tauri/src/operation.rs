@@ -1,11 +1,11 @@
 use serde::Serialize;
-use tauri::{Emitter, Window};
+use tauri::{Emitter, WebviewWindow};
 
 use crate::error::AppError;
 
 pub struct Operation<'a> {
     id: String,
-    window: &'a Window,
+    window: &'a WebviewWindow,
 }
 
 #[derive(Clone, Serialize)]
@@ -14,10 +14,11 @@ struct OperationUpdate<'a> {
     update_type: &'a str,
     step_id: &'a str,
     extra_details: Option<AppError>,
+    progress: Option<f32>,
 }
 
 impl<'a> Operation<'a> {
-    pub fn new(id: String, window: &'a Window) -> Operation<'a> {
+    pub fn new(id: String, window: &'a WebviewWindow) -> Operation<'a> {
         Operation { id, window }
     }
 
@@ -34,6 +35,7 @@ impl<'a> Operation<'a> {
                     update_type: "started",
                     step_id: id,
                     extra_details: None,
+                    progress: None,
                 },
             )
             .map_err(|e| AppError::OperationUpdate(e.to_string()))
@@ -47,6 +49,7 @@ impl<'a> Operation<'a> {
                     update_type: "finished",
                     step_id: id,
                     extra_details: None,
+                    progress: None,
                 },
             )
             .map_err(|e| AppError::OperationUpdate(e.to_string()))
@@ -60,6 +63,7 @@ impl<'a> Operation<'a> {
                     update_type: "failed",
                     step_id: id,
                     extra_details: Some(error.clone()),
+                    progress: None,
                 },
             )
             .map_err(|e| AppError::OperationUpdate(e.to_string()))?;
@@ -71,5 +75,19 @@ impl<'a> Operation<'a> {
             Ok(t) => Ok(t),
             Err(e) => self.fail::<T>(id, e),
         }
+    }
+
+    pub fn progress(&self, id: &str, progress: f32) -> Result<(), AppError> {
+        self.window
+            .emit(
+                &format!("operation_{}", self.id),
+                OperationUpdate {
+                    update_type: "progress",
+                    step_id: id,
+                    extra_details: None,
+                    progress: Some(progress.clamp(0.0, 1.0)),
+                },
+            )
+            .map_err(|e| AppError::OperationUpdate(e.to_string()))
     }
 }
