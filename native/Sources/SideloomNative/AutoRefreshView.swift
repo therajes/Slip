@@ -29,6 +29,7 @@ struct AutoRefreshView: View {
                 }
                 .padding(28)
             }
+            .scrollIndicators(.hidden)
         }
         .background(SlipBackdrop())
         .onAppear { model.reloadManagedInstallations() }

@@ -25,7 +25,7 @@ struct DeviceAppsView: View {
                 HStack(spacing: 12) {
                     Picker("iPhone", selection: $model.selectedDevice) {
                         ForEach(model.devices) { device in
-                            Text("\(device.name) · \(device.connectionType)")
+                            Text("\(device.marketingName) · \(device.connectionType)")
                                 .tag(Optional(device))
                         }
                     }

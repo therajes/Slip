@@ -362,6 +362,91 @@ pub fn inspect_ipa(app_path: String) -> Result<IpaInfo, AppError> {
     Ok(parse_ipa(Path::new(&app_path))?.info)
 }
 
+pub fn extract_ipa_icon(app_path: String, destination: String) -> Result<String, AppError> {
+    let parsed = parse_ipa(Path::new(&app_path))?;
+    let file = File::open(&app_path).map_err(|error| {
+        AppError::Filesystem(
+            "Unable to open IPA for icon preview".into(),
+            error.to_string(),
+        )
+    })?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|error| AppError::Misc(format!("Unable to read IPA icon: {error}")))?;
+    let mut candidates = Vec::new();
+
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|error| {
+            AppError::Filesystem("Unable to inspect IPA icon entry".into(), error.to_string())
+        })?;
+        let name = entry.name().replace('\\', "/");
+        let Some(relative) = name.strip_prefix(&parsed.main_root) else {
+            continue;
+        };
+        let lower = relative.to_ascii_lowercase();
+        if relative.contains('/') || !lower.ends_with(".png") || !lower.contains("icon") {
+            continue;
+        }
+
+        let score = if lower.contains("appicon") {
+            20_000
+        } else {
+            10_000
+        } + if lower.contains("@3x") {
+            300
+        } else if lower.contains("@2x") {
+            200
+        } else {
+            0
+        } + if lower.contains("~ipad") { 25 } else { 0 };
+        candidates.push((score, entry.size(), name));
+    }
+
+    let mut best: Option<(u64, Vec<u8>)> = None;
+    for (name_score, archived_size, name) in candidates {
+        let mut entry = archive.by_name(&name).map_err(|error| {
+            AppError::Filesystem("Unable to read IPA icon".into(), error.to_string())
+        })?;
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes).map_err(|error| {
+            AppError::Filesystem("Unable to read IPA icon".into(), error.to_string())
+        })?;
+        // Some real-world IPAs still contain Apple's CgBI-optimized PNGs.
+        // ImageIO on macOS displays those directly even though the portable
+        // Rust decoder cannot, so retain the original bytes as a fallback.
+        let (detail_score, preview) = match image::load_from_memory(&bytes) {
+            Ok(image) => (
+                image.width() as u64 * image.height() as u64,
+                make_icon(&image, 256)?,
+            ),
+            Err(_) => (archived_size, bytes),
+        };
+        let score = name_score as u64 * 1_000_000 + detail_score;
+        if best
+            .as_ref()
+            .is_none_or(|(best_score, _)| score > *best_score)
+        {
+            best = Some((score, preview));
+        }
+    }
+
+    let (_, preview) = best.ok_or_else(|| {
+        AppError::Misc("This IPA does not contain an extractable app icon".into())
+    })?;
+    let destination = PathBuf::from(destination);
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            AppError::Filesystem(
+                "Unable to create icon preview folder".into(),
+                error.to_string(),
+            )
+        })?;
+    }
+    fs::write(&destination, preview).map_err(|error| {
+        AppError::Filesystem("Unable to save IPA icon preview".into(), error.to_string())
+    })?;
+    Ok(destination.to_string_lossy().into_owned())
+}
+
 fn validate_bundle_id(bundle_id: &str) -> Result<(), AppError> {
     let valid = !bundle_id.is_empty()
         && bundle_id.contains('.')
@@ -474,10 +559,7 @@ pub fn prepare_ipa_in(temp_root: &Path, options: &IpaInstallOptions) -> Result<P
             continue;
         }
 
-        let compression = match entry.compression() {
-            CompressionMethod::Stored => CompressionMethod::Stored,
-            _ => CompressionMethod::Deflated,
-        };
+        let compression = entry.compression();
         let file_options = SimpleFileOptions::default()
             .compression_method(compression)
             .unix_permissions(entry.unix_mode().unwrap_or(0o644));
@@ -488,11 +570,10 @@ pub fn prepare_ipa_in(temp_root: &Path, options: &IpaInstallOptions) -> Result<P
             continue;
         }
 
-        output.start_file(&name, file_options).map_err(|e| {
-            AppError::Filesystem("Unable to write IPA entry".to_string(), e.to_string())
-        })?;
-
         if name == parsed.main_info_path {
+            output.start_file(&name, file_options).map_err(|e| {
+                AppError::Filesystem("Unable to write IPA metadata".to_string(), e.to_string())
+            })?;
             let mut info = parsed.main_info.clone();
             info.insert(
                 "CFBundleIdentifier".to_string(),
@@ -544,6 +625,20 @@ pub fn prepare_ipa_in(temp_root: &Path, options: &IpaInstallOptions) -> Result<P
                         "Info.plist override keys cannot be empty".to_string(),
                     ));
                 }
+                if matches!(
+                    key,
+                    "CFBundleIdentifier"
+                        | "CFBundleExecutable"
+                        | "CFBundlePackageType"
+                        | "CFBundleSupportedPlatforms"
+                        | "DTPlatformName"
+                        | "DTPlatformVersion"
+                        | "LSRequiresIPhoneOS"
+                ) {
+                    return Err(AppError::Misc(format!(
+                        "{key} is identity-critical and cannot be changed through a plist override"
+                    )));
+                }
                 info.insert(key.to_string(), plist_override_value(item)?);
             }
             output.write_all(&plist_bytes(&info)?).map_err(|e| {
@@ -572,6 +667,12 @@ pub fn prepare_ipa_in(temp_root: &Path, options: &IpaInstallOptions) -> Result<P
                     Value::String(format!("{target_bundle_id}{suffix}")),
                 );
             }
+            output.start_file(&name, file_options).map_err(|e| {
+                AppError::Filesystem(
+                    "Unable to write extension metadata".to_string(),
+                    e.to_string(),
+                )
+            })?;
             output.write_all(&plist_bytes(&info)?).map_err(|e| {
                 AppError::Filesystem(
                     "Unable to write extension metadata".to_string(),
@@ -579,7 +680,10 @@ pub fn prepare_ipa_in(temp_root: &Path, options: &IpaInstallOptions) -> Result<P
                 )
             })?;
         } else {
-            std::io::copy(&mut entry, &mut output).map_err(|e| {
+            // Preserve the original compressed bytes for unchanged files. Large IPAs are
+            // mostly assets and frameworks; inflating and deflating those entries again
+            // wastes seconds without changing their content.
+            output.raw_copy_file(entry).map_err(|e| {
                 AppError::Filesystem("Unable to copy IPA entry".to_string(), e.to_string())
             })?;
         }
@@ -652,9 +756,17 @@ pub fn prepare_ipa(app: &AppHandle, options: &IpaInstallOptions) -> Result<PathB
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_ipa, plist_bytes, validate_bundle_id};
+    use super::{
+        IpaInstallOptions, PlistOverride, extract_ipa_icon, make_icon, parse_ipa, plist_bytes,
+        prepare_ipa_in, validate_bundle_id,
+    };
+    use image::DynamicImage;
     use plist::{Dictionary, Value};
-    use std::{fs::File, io::Write, time::SystemTime};
+    use std::{
+        fs::File,
+        io::{Read, Write},
+        time::SystemTime,
+    };
     use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
     #[test]
@@ -696,6 +808,10 @@ mod tests {
         zip.start_file("Payload/Test.app/Info.plist", options)
             .unwrap();
         zip.write_all(&plist_bytes(&app).unwrap()).unwrap();
+        zip.start_file("Payload/Test.app/AppIcon60x60@2x.png", options)
+            .unwrap();
+        zip.write_all(&make_icon(&DynamicImage::new_rgba8(120, 120), 120).unwrap())
+            .unwrap();
 
         let mut extension = Dictionary::new();
         extension.insert(
@@ -731,6 +847,99 @@ mod tests {
             Some("com.apple.share-services")
         );
 
+        let preview = std::env::temp_dir().join(format!("sideloom-test-{unique}-icon.png"));
+        extract_ipa_icon(
+            path.to_string_lossy().into_owned(),
+            preview.to_string_lossy().into_owned(),
+        )
+        .unwrap();
+        let preview_image = image::open(&preview).unwrap();
+        assert_eq!((preview_image.width(), preview_image.height()), (256, 256));
+
         std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(preview).unwrap();
+    }
+
+    #[test]
+    fn prepares_identity_compatibility_and_typed_metadata() {
+        let unique = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("slip-prepare-test-{unique}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let source_path = root.join("Source.ipa");
+        let file = File::create(&source_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let file_options =
+            SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        let mut app = Dictionary::new();
+        app.insert(
+            "CFBundleIdentifier".into(),
+            Value::String("com.example.Source".into()),
+        );
+        app.insert("CFBundleDisplayName".into(), Value::String("Source".into()));
+        app.insert(
+            "CFBundleShortVersionString".into(),
+            Value::String("1.0".into()),
+        );
+        app.insert("CFBundleVersion".into(), Value::String("1".into()));
+        app.insert("MinimumOSVersion".into(), Value::String("16.0".into()));
+        app.insert(
+            "UISupportedDevices".into(),
+            Value::Array(vec![Value::String("iPhone15,2".into())]),
+        );
+        zip.start_file("Payload/Source.app/Info.plist", file_options)
+            .unwrap();
+        zip.write_all(&plist_bytes(&app).unwrap()).unwrap();
+        zip.start_file("Payload/Source.app/Asset.bin", file_options)
+            .unwrap();
+        zip.write_all(&vec![7_u8; 32_768]).unwrap();
+        zip.finish().unwrap();
+
+        let options = IpaInstallOptions {
+            app_path: source_path.to_string_lossy().into_owned(),
+            display_name: Some("Prepared".into()),
+            bundle_id: Some("com.example.Prepared".into()),
+            removed_extensions: vec![],
+            custom_icon_path: None,
+            increased_memory_limit: false,
+            minimum_os_version: Some("17.0".into()),
+            remove_supported_devices: true,
+            enable_file_sharing: true,
+            plist_overrides: vec![PlistOverride {
+                key: "SlipValidated".into(),
+                value_type: "Boolean".into(),
+                value: "true".into(),
+            }],
+        };
+        let prepared_path = prepare_ipa_in(&root, &options).unwrap();
+        let prepared_file = File::open(&prepared_path).unwrap();
+        let mut prepared = zip::ZipArchive::new(prepared_file).unwrap();
+        let mut info_bytes = Vec::new();
+        prepared
+            .by_name("Payload/Source.app/Info.plist")
+            .unwrap()
+            .read_to_end(&mut info_bytes)
+            .unwrap();
+        let info: Dictionary = plist::from_bytes(&info_bytes).unwrap();
+        assert_eq!(
+            info["CFBundleIdentifier"].as_string(),
+            Some("com.example.Prepared")
+        );
+        assert_eq!(info["CFBundleDisplayName"].as_string(), Some("Prepared"));
+        assert_eq!(info["MinimumOSVersion"].as_string(), Some("17.0"));
+        assert_eq!(info["UIFileSharingEnabled"].as_boolean(), Some(true));
+        assert_eq!(info["SlipValidated"].as_boolean(), Some(true));
+        assert!(!info.contains_key("UISupportedDevices"));
+        assert_eq!(
+            prepared
+                .by_name("Payload/Source.app/Asset.bin")
+                .unwrap()
+                .compression(),
+            CompressionMethod::Deflated
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

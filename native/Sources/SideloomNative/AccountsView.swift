@@ -93,6 +93,7 @@ struct AccountsView: View {
             }
             .padding(28)
         }
+        .scrollIndicators(.hidden)
         .background(.background)
     }
 }

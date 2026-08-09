@@ -25,7 +25,7 @@ use crate::{
     device::{DeviceInfo, enable_wifi_debugging, get_provider, list_devices},
     error::AppError,
     fast_install::install_signed_app_fast_with_progress,
-    ipa::{IpaInstallOptions, export_prepared_ipa, inspect_ipa, prepare_ipa_in},
+    ipa::{IpaInstallOptions, export_prepared_ipa, extract_ipa_icon, inspect_ipa, prepare_ipa_in},
 };
 
 type Input = Arc<Mutex<BufReader<std::io::Stdin>>>;
@@ -424,6 +424,17 @@ pub async fn run() -> Result<(), AppError> {
             emit(json!({ "type": "ipa", "ipa": info }));
             Ok(())
         }
+        Some("icon") => {
+            let path = arguments
+                .next()
+                .ok_or_else(|| AppError::Misc("Missing IPA path".into()))?;
+            let destination = arguments
+                .next()
+                .ok_or_else(|| AppError::Misc("Missing icon destination".into()))?;
+            let icon_path = extract_ipa_icon(path, destination)?;
+            emit(json!({ "type": "icon", "message": icon_path }));
+            Ok(())
+        }
         Some("enable-wifi") => {
             let udid = arguments
                 .next()
@@ -513,7 +524,7 @@ pub async fn run() -> Result<(), AppError> {
             install(request, input).await
         }
         _ => Err(AppError::Misc(
-            "Usage: sideloom-core devices | inspect <ipa> | enable-wifi <udid> | apps | export | network-check [url] | anisette-check [url] [storage] | install".into(),
+            "Usage: sideloom-core devices | inspect <ipa> | icon <ipa> <destination> | enable-wifi <udid> | apps | export | network-check [url] | anisette-check [url] [storage] | install".into(),
         )),
     }
 }

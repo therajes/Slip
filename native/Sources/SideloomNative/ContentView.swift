@@ -22,6 +22,7 @@ private enum SidebarSection: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var appearance: AppearanceController
     @State private var section: SidebarSection? = .install
     @State private var twoFactorCode = ""
     @State private var selectedCertificates: Set<String> = []
@@ -30,14 +31,17 @@ struct ContentView: View {
         NavigationSplitView {
             List(SidebarSection.allCases, selection: $section) { item in
                 Label(item.rawValue, systemImage: item.symbol)
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.body.weight(section == item ? .semibold : .regular))
                     .tag(item)
             }
             .navigationSplitViewColumnWidth(min: 190, ideal: 220)
             .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 10) {
-                    Image(systemName: model.devices.isEmpty ? "iphone.slash" : "iphone")
+                    Image(systemName: model.devices.isEmpty ? "iphone.slash" : model.selectedDevice?.connectionType.lowercased() == "network" ? "wifi" : "iphone")
+                        .foregroundStyle(model.devices.isEmpty ? Color.secondary : Color.accentColor)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(model.selectedDevice?.name ?? "No iPhone")
+                        Text(model.selectedDevice?.marketingName ?? "No iPhone")
                             .font(.caption.weight(.semibold))
                         Text(model.selectedDevice?.connectionType ?? "Connect with USB")
                             .font(.caption2)
@@ -46,19 +50,33 @@ struct ContentView: View {
                     Spacer()
                 }
                 .padding(12)
-                .background(.ultraThinMaterial)
+                .slipGlassSurface(tint: model.devices.isEmpty ? nil : Color.accentColor.opacity(0.08), cornerRadius: 18)
+                .padding(8)
             }
         } detail: {
-            switch section ?? .install {
-            case .install: InstallView()
-            case .autoRefresh: AutoRefreshView()
-            case .deviceApps: DeviceAppsView()
-            case .accounts: AccountsView()
-            case .activity: ActivityView()
+            ZStack {
+                switch section ?? .install {
+                case .install: InstallView()
+                case .autoRefresh: AutoRefreshView()
+                case .deviceApps: DeviceAppsView()
+                case .accounts: AccountsView()
+                case .activity: ActivityView()
+                }
             }
+            .id(section)
+            .transition(.opacity.combined(with: .scale(scale: 0.992)))
+            .animation(appearance.motionAllowed ? .smooth(duration: 0.26) : nil, value: section)
         }
         .groupBoxStyle(SlipGlassGroupBoxStyle())
         .slipGlassControls()
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            appearance.refreshIcon()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showAccounts)) { _ in
+            withAnimation(appearance.motionAllowed ? .smooth(duration: 0.22) : nil) {
+                section = .accounts
+            }
+        }
         .onOpenURL { url in
             if url.pathExtension.lowercased() == "ipa" && url.isFileURL {
                 Task { await model.loadIPA(url) }
@@ -135,6 +153,10 @@ struct ContentView: View {
     }
 }
 
+extension Notification.Name {
+    static let showAccounts = Notification.Name("SlipShowAccounts")
+}
+
 struct ActivityView: View {
     @EnvironmentObject private var model: AppModel
 
@@ -172,16 +194,25 @@ struct PageHeader: View {
     let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(eyebrow).font(.caption.weight(.bold)).foregroundStyle(.tint)
-            Text(title).font(.largeTitle.bold())
-            Text(subtitle).foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(eyebrow)
+                    .font(.caption.weight(.bold))
+                    .tracking(0.7)
+                    .foregroundStyle(.tint)
+                Text(title).font(.system(.largeTitle, design: .rounded, weight: .bold))
+                Text(subtitle).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "drop.halffull")
+                .font(.system(size: 26, weight: .light))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tint)
+                .padding(13)
+                .slipGlassSurface(tint: Color.accentColor.opacity(0.10), cornerRadius: 18)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 30)
         .padding(.vertical, 24)
-        .slipGlassSurface(tint: Color.accentColor.opacity(0.08), cornerRadius: 24)
-        .padding(.horizontal, 10)
-        .padding(.top, 10)
     }
 }

@@ -37,8 +37,18 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 ditto "$SWIFT_BIN_DIR/SlipNative" "$APP_DIR/Contents/MacOS/Slip"
 ditto "$CORE_DIR/target/release/sideloom-core" "$APP_DIR/Contents/Resources/sideloom-core"
 ditto "$PROJECT_DIR/src-tauri/icons/icon.icns" "$APP_DIR/Contents/Resources/Slip.icns"
+ditto "$NATIVE_DIR/Assets.xcassets/SlipAppIcon.imageset/SlipAppIcon-Light.png" "$APP_DIR/Contents/Resources/SlipAppIcon-Light.png"
+ditto "$NATIVE_DIR/Assets.xcassets/SlipAppIcon.imageset/SlipAppIcon-Dark.png" "$APP_DIR/Contents/Resources/SlipAppIcon-Dark.png"
 ditto "$NATIVE_DIR/Info.plist" "$APP_DIR/Contents/Info.plist"
 chmod 755 "$APP_DIR/Contents/MacOS/Slip" "$APP_DIR/Contents/Resources/sideloom-core"
+
+xcrun actool "$NATIVE_DIR/Assets.xcassets" \
+    --compile "$APP_DIR/Contents/Resources" \
+    --platform macosx \
+    --minimum-deployment-target 15.0 \
+    --target-device mac \
+    --warnings \
+    --notices >/dev/null
 
 codesign --force --sign "$SIDELOOM_SIGN_IDENTITY" --identifier app.sideloom.native.core "$APP_DIR/Contents/Resources/sideloom-core"
 codesign --force --deep --sign "$SIDELOOM_SIGN_IDENTITY" --identifier app.sideloom.native "$APP_DIR"

@@ -25,6 +25,10 @@ pub struct DeviceInfo {
     pub udid: String,
     pub connection_type: String,
     pub version: String,
+    #[serde(default)]
+    pub product_type: Option<String>,
+    #[serde(default)]
+    pub device_color: Option<String>,
 }
 
 #[cfg(feature = "tauri-ui")]
@@ -113,12 +117,25 @@ pub async fn list_devices() -> Result<Vec<Result<DeviceInfo, AppError>>, AppErro
                     AppError::DeviceComs("Product version was not a string".into())
                 })?;
 
+                let product_type = lockdown_client
+                    .get_value(Some("ProductType"), None)
+                    .await
+                    .ok()
+                    .and_then(|value| value.as_string().map(ToOwned::to_owned));
+                let device_color = lockdown_client
+                    .get_value(Some("DeviceColor"), None)
+                    .await
+                    .ok()
+                    .and_then(|value| value.as_string().map(ToOwned::to_owned));
+
                 Ok::<DeviceInfo, AppError>(DeviceInfo {
                     name: device_name.to_string(),
                     id: device_uid,
                     udid: d.udid.clone(),
                     connection_type,
                     version: version.to_string(),
+                    product_type,
+                    device_color,
                 })
             }
         })

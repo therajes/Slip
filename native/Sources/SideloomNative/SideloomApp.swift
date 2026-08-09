@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct SlipApp: App {
     @StateObject private var model: AppModel
+    @StateObject private var appearance = AppearanceController()
     private let workerMode: Bool
 
     init() {
@@ -22,7 +23,9 @@ struct SlipApp: App {
             } else {
                 ContentView()
                     .environmentObject(model)
-                    .frame(minWidth: 980, minHeight: 680)
+                    .environmentObject(appearance)
+                    .frame(minWidth: 1040, minHeight: 720)
+                    .onAppear { appearance.apply() }
             }
         }
         .windowStyle(.hiddenTitleBar)
@@ -38,6 +41,11 @@ struct SlipApp: App {
                 }
                 .keyboardShortcut("r")
             }
+        }
+
+        Settings {
+            AppearanceSettingsView()
+                .environmentObject(appearance)
         }
     }
 }

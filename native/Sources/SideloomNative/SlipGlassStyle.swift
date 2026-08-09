@@ -1,20 +1,27 @@
 import SwiftUI
 
 struct SlipBackdrop: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         ZStack {
-            Color(nsColor: .windowBackgroundColor)
+            Color(nsColor: .underPageBackgroundColor)
             RadialGradient(
-                colors: [Color.accentColor.opacity(0.12), .clear],
+                colors: [Color.accentColor.opacity(colorScheme == .dark ? 0.18 : 0.10), .clear],
                 center: .topTrailing,
                 startRadius: 20,
-                endRadius: 540
+                endRadius: 620
             )
             RadialGradient(
-                colors: [Color.indigo.opacity(0.06), .clear],
+                colors: [Color.cyan.opacity(colorScheme == .dark ? 0.08 : 0.05), .clear],
                 center: .bottomLeading,
                 startRadius: 10,
-                endRadius: 620
+                endRadius: 700
+            )
+            LinearGradient(
+                colors: [.white.opacity(colorScheme == .dark ? 0.015 : 0.16), .clear],
+                startPoint: .top,
+                endPoint: .center
             )
         }
         .ignoresSafeArea()
@@ -50,8 +57,57 @@ struct SlipGlassGroupBoxStyle: GroupBoxStyle {
                 .foregroundStyle(.secondary)
             configuration.content
         }
-        .padding(16)
-        .modifier(SlipGlassSurfaceModifier(tint: nil, interactive: false, cornerRadius: 20))
+        .padding(18)
+        .modifier(SlipGlassSurfaceModifier(tint: nil, interactive: false, cornerRadius: 24))
+    }
+}
+
+struct SlipGlassContainer<Content: View>: View {
+    private let spacing: CGFloat
+    private let content: Content
+
+    init(spacing: CGFloat = 18, @ViewBuilder content: () -> Content) {
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) { content }
+        } else {
+            content
+        }
+    }
+}
+
+struct SlipStatusPill: View {
+    let title: String
+    let symbol: String
+    var tint: Color = .secondary
+
+    var body: some View {
+        Label(title, systemImage: symbol)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .slipGlassSurface(tint: tint.opacity(0.10), cornerRadius: 999)
+    }
+}
+
+struct SlipSymbolTile: View {
+    let symbol: String
+    var tint: Color = .accentColor
+    var size: CGFloat = 44
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.45, weight: .medium))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .slipGlassSurface(tint: tint.opacity(0.10), interactive: true, cornerRadius: size * 0.32)
     }
 }
 

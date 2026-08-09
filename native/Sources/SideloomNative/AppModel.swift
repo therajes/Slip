@@ -7,6 +7,7 @@ final class AppModel: ObservableObject {
     @Published var devices: [DeviceInfo] = []
     @Published var selectedDevice: DeviceInfo?
     @Published var ipa: IpaInfo?
+    @Published var ipaIconURL: URL?
     @Published var customName = ""
     @Published var customBundleID = ""
     @Published var customIconURL: URL?
@@ -35,6 +36,8 @@ final class AppModel: ObservableObject {
     @Published var managedInstallations: [ManagedInstallation] = []
     @Published var installedApps: [InstalledAppInfo] = []
     @Published var isLoadingInstalledApps = false
+    @Published var inspectionDuration: TimeInterval?
+    @Published var lastInstallDuration: TimeInterval?
     @Published var refreshingManagedIDs: Set<String> = []
     @Published var hideSensitiveInfo = UserDefaults.standard.bool(forKey: "hideSensitiveInfo") {
         didSet { UserDefaults.standard.set(hideSensitiveInfo, forKey: "hideSensitiveInfo") }
@@ -43,6 +46,7 @@ final class AppModel: ObservableObject {
     let core = CoreClient()
     let anisetteServer = "ani.sidestore.io"
     private var stageProgress: [String: Double] = [:]
+    private var installStartedAt: Date?
 
     init(startupTasks: Bool = true) {
         reloadAccounts()
@@ -106,7 +110,7 @@ final class AppModel: ObservableObject {
                 selectedDevice = replacement
             } else {
                 selectedDevice = devices.first(where: {
-                    $0.connectionType.caseInsensitiveCompare("Network") == .orderedSame
+                    $0.connectionType.caseInsensitiveCompare("USB") == .orderedSame
                 }) ?? devices.first
             }
             if let errors = event.errors, !errors.isEmpty {
@@ -125,6 +129,8 @@ final class AppModel: ObservableObject {
             return
         }
         isInspecting = true
+        let startedAt = Date()
+        discardIPAPreview()
         defer { isInspecting = false }
         do {
             let event = try await core.run(["inspect", url.path])
@@ -140,10 +146,13 @@ final class AppModel: ObservableObject {
             removeSupportedDevices = false
             enableFileSharing = false
             plistOverrides = []
-            appendActivity("Loaded \(info.appName) \(info.version)")
+            await loadIPAPreview(for: info)
+            inspectionDuration = Date().timeIntervalSince(startedAt)
+            appendActivity("Loaded \(info.appName) \(info.version) in \(inspectionDuration?.formatted(.number.precision(.fractionLength(2))) ?? "0")s")
         } catch {
             ipa = nil
-            errorMessage = error.localizedDescription
+            discardIPAPreview()
+            errorMessage = friendlyMessage(for: error)
         }
     }
 
@@ -256,6 +265,10 @@ final class AppModel: ObservableObject {
             errorMessage = "Add an Apple Account in Keychain first."
             return
         }
+        if let issue = blockingInstallIssue {
+            errorMessage = "\(issue.title). \(issue.detail)"
+            return
+        }
 
         do {
             let password = try KeychainStore.password(for: selectedAccount)
@@ -278,6 +291,7 @@ final class AppModel: ObservableObject {
             overallProgress = 0
             stageProgress = [:]
             currentStage = "Starting"
+            installStartedAt = Date()
             appendActivity("Starting install on \(selectedDevice.name) via \(selectedDevice.connectionType)")
             Task { await consumeInstall(request, ipa: ipa) }
         } catch {
@@ -289,6 +303,11 @@ final class AppModel: ObservableObject {
         guard !isExporting else { return }
         guard let ipa else {
             errorMessage = "Choose an IPA first."
+            return
+        }
+        guard canExport else {
+            let issue = customizationIssues.first { $0.level == .blocking }
+            errorMessage = issue.map { "\($0.title). \($0.detail)" } ?? "This IPA cannot be exported safely."
             return
         }
         isExporting = true
@@ -321,6 +340,27 @@ final class AppModel: ObservableObject {
 
     func addPlistOverride() {
         plistOverrides.append(PlistOverride())
+    }
+
+    func clearIPA() {
+        ipa = nil
+        discardIPAPreview()
+        inspectionDuration = nil
+        resetCustomizations()
+        currentStage = "Ready"
+        overallProgress = 0
+    }
+
+    func resetCustomizations() {
+        customName = ""
+        customBundleID = ""
+        customIconURL = nil
+        removedExtensions = Set(ipa?.extensions.map(\.path) ?? [])
+        increasedMemoryLimit = false
+        minimumOSVersion = ""
+        removeSupportedDevices = false
+        enableFileSharing = false
+        plistOverrides = []
     }
 
     func removePlistOverride(_ id: UUID) {
@@ -356,7 +396,10 @@ final class AppModel: ObservableObject {
                 case "completed":
                     overallProgress = 1
                     currentStage = "Installed"
-                    appendActivity("Installation completed successfully")
+                    if let installStartedAt {
+                        lastInstallDuration = Date().timeIntervalSince(installStartedAt)
+                    }
+                    appendActivity("Installation completed successfully\(lastInstallDuration.map { " in \($0.formatted(.number.precision(.fractionLength(1))))s" } ?? "")")
                     do {
                         let entry = try AutoRefreshStore.recordSuccessfulInstall(
                             ipa: ipa,
@@ -371,7 +414,7 @@ final class AppModel: ObservableObject {
                         appendActivity("Could not save Auto Refresh schedule: \(error.localizedDescription)")
                     }
                 case "error":
-                    let message = event.message ?? "Installation failed"
+                    let message = friendlyMessage(event.message ?? "Installation failed")
                     showTwoFactor = false
                     showCertificates = false
                     errorMessage = message
@@ -383,7 +426,7 @@ final class AppModel: ObservableObject {
         } catch {
             showTwoFactor = false
             showCertificates = false
-            if errorMessage == nil { errorMessage = error.localizedDescription }
+            if errorMessage == nil { errorMessage = friendlyMessage(for: error) }
             if let errorMessage { appendActivity("Error: \(errorMessage)") }
             appendActivity("Installation stopped")
         }
@@ -486,6 +529,42 @@ final class AppModel: ObservableObject {
         )
     }
 
+    private func loadIPAPreview(for info: IpaInfo) async {
+        do {
+            let previewDirectory = try FileManager.default.url(
+                for: .cachesDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            ).appending(path: "app.sideloom.native/IPAIcons", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(
+                at: previewDirectory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            let destination = previewDirectory.appending(
+                path: "\(UUID().uuidString).png",
+                directoryHint: .notDirectory
+            )
+            _ = try await core.run(["icon", info.path, destination.path])
+            guard ipa?.path == info.path, FileManager.default.fileExists(atPath: destination.path) else {
+                try? FileManager.default.removeItem(at: destination)
+                return
+            }
+            ipaIconURL = destination
+        } catch {
+            ipaIconURL = nil
+            appendActivity("The IPA did not expose a usable app icon; showing a fallback.")
+        }
+    }
+
+    private func discardIPAPreview() {
+        if let ipaIconURL {
+            try? FileManager.default.removeItem(at: ipaIconURL)
+        }
+        ipaIconURL = nil
+    }
+
     var visibleActivity: [String] {
         hideSensitiveInfo ? activity.map(redacted) : activity
     }
@@ -509,6 +588,23 @@ final class AppModel: ObservableObject {
     private func appendActivity(_ entry: String) {
         activity.insert(entry, at: 0)
         if activity.count > 100 { activity.removeLast(activity.count - 100) }
+    }
+
+    private func friendlyMessage(for error: Error) -> String {
+        friendlyMessage(error.localizedDescription)
+    }
+
+    private func friendlyMessage(_ raw: String) -> String {
+        var message = raw
+        if let expression = try? NSRegularExpression(pattern: #"/Users/[^\s]+/\.cargo/[^\s]+:\d+(?::\d+)?"#) {
+            message = expression.stringByReplacingMatches(
+                in: message,
+                range: NSRange(message.startIndex..., in: message),
+                withTemplate: "signing engine"
+            )
+        }
+        message = message.replacingOccurrences(of: "thread 'main' panicked", with: "The signing engine stopped unexpectedly")
+        return message.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
