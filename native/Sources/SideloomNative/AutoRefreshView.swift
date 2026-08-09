@@ -40,6 +40,7 @@ struct AutoRefreshView: View {
             HStack(alignment: .top, spacing: 16) {
                 Image(systemName: AutoRefreshScheduler.isInstalled ? "checkmark.circle.fill" : "clock.badge.exclamationmark")
                     .font(.system(size: 30))
+                    .slipDimensionalSymbol(strength: 1.15)
                     .foregroundStyle(AutoRefreshScheduler.isInstalled ? .green : .orange)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(AutoRefreshScheduler.isInstalled ? "Background checks are active" : "Open the installed copy of Slip to activate background checks")
@@ -73,6 +74,7 @@ struct AutoRefreshView: View {
                 HStack(spacing: 14) {
                     Image(systemName: statusSymbol(item))
                         .font(.system(size: 26))
+                        .slipDimensionalSymbol(strength: 1.08)
                         .foregroundStyle(statusColor(item))
                         .frame(width: 40)
                     VStack(alignment: .leading, spacing: 3) {

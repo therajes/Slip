@@ -11,6 +11,15 @@ struct DeviceInfo: Codable, Hashable, Identifiable {
 
     var identity: String { "\(udid)-\(id)" }
 
+    var displayName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? marketingName : trimmed
+    }
+
+    var showsModelBesideName: Bool {
+        displayName.caseInsensitiveCompare(marketingName) != .orderedSame
+    }
+
     var marketingName: String {
         guard let productType, !productType.isEmpty else { return "iPhone" }
         return Self.marketingNames[productType] ?? "iPhone · \(productType)"
@@ -93,6 +102,14 @@ struct CoreEvent: Codable {
     let message: String?
     let certificates: [CertificateInfo]?
     let apps: [InstalledAppInfo]?
+    let bundleIds: [String]?
+    let email: String?
+    let accountName: String?
+}
+
+struct UninstallAppsRequest: Codable {
+    let device: DeviceInfo
+    let bundleIds: [String]
 }
 
 struct PlistOverride: Codable, Hashable, Identifiable {

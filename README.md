@@ -6,6 +6,8 @@ Slip is intentionally iPhone-only. It does not target Apple TV, Apple-silicon Ma
 
 ![Slip's native Liquid Glass installer](design/screenshots/slip-install.png)
 
+![Slip's local Apple Account profiles](design/screenshots/slip-accounts.png)
+
 ![Slip drag-to-Applications disk image](design/screenshots/slip-dmg.png)
 
 ## Highlights
@@ -18,11 +20,11 @@ Slip is intentionally iPhone-only. It does not target Apple TV, Apple-silicon Ma
 - Change the Home Screen name, bundle ID, icon, minimum iOS version, file-sharing flags, supported-device restriction, and typed top-level Info.plist values.
 - Keep or remove each app extension independently, with remove-all as the free-account-friendly default.
 - Export a customized IPA without installing it.
-- Apple Account sign-in with two-factor prompts and opt-in macOS Keychain storage; credentials never appear in command arguments or logs.
+- Apple Account profiles with verified-name capture, local custom avatars, two-factor prompts, and opt-in macOS Keychain storage; credentials never appear in command arguments or logs.
 - Fast streamed USB installation with separate preparation, signing, transfer, verification, retry, and recovery feedback.
 - Paired local-network discovery, one-click Wi-Fi pairing enablement, and automatic USB fallback.
 - Refresh Guard re-signs saved apps about 24 hours before a free seven-day profile expires, provided the Mac and paired iPhone can reach each other.
-- Read-only iPhone app inventory, saved refresh recipes, Refresh All, activity history, copyable diagnostics, and privacy redaction.
+- iPhone app inventory with explicit selection, bundle-ID copy, managed-app refresh, confirmed uninstall, saved refresh recipes, activity history, and privacy redaction.
 - Preflight validation that blocks encrypted IPAs, incompatible iOS targets, invalid bundle IDs, missing icons, duplicate keys, and unsafe identity plist overrides before signing.
 - Raw-copy IPA preparation that leaves unchanged compressed entries untouched; the 1.1 benchmark reduced a 196 MB customization pass from 4.42 seconds to 1.15 seconds on the release Mac.
 
@@ -48,7 +50,7 @@ Requirements: macOS 15 or newer, Xcode command-line tools, Rust, and an Apple-si
 
 ```sh
 ./native/build.sh
-./native/create-dmg.sh native/build/Slip.app native/dist/Slip-1.1.0.dmg
+./native/create-dmg.sh native/build/Slip.app native/dist/Slip-1.1.1.dmg
 ```
 
 Verification:

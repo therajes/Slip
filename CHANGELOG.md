@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.1 — 2026-08-09
+
+### Added
+
+- Added an explicit iPhone-app selection action bar with Select Visible, Clear, Copy IDs, Refresh, and Uninstall actions.
+- Added paired-device uninstallation through Apple’s Installation Proxy with partial-failure reporting and a destructive confirmation that explains local-data removal.
+- Added an animated, icon-like Liquid Glass iPhone preview with an intentionally empty neutral display, a single settling USB insertion for wired devices, and a monochrome glass Wi-Fi indicator for network devices.
+- Added a shared dimensional symbol treatment across navigation, status pills, card headers, actions, app rows, and empty states, with neutral highlights and restrained depth shadows.
+- Added Apple Account identity profiles with dimensional avatars, editable local profile photos, inferred names for existing credentials, and automatic verified-name capture from Apple after authentication.
+
+### Fixed
+
+- Replaced ambiguous selectable inventory rows with visible checkboxes and selected-row styling.
+- Matching Auto Refresh recipes are removed after an app is successfully uninstalled, preventing an intentionally removed app from being reinstalled by the background guard.
+- Refresh is enabled only when the selection includes apps already managed by Slip, with a clear explanation otherwise.
+- The Destination card now leads with the iPhone’s personal device name and shows its detected model in a smaller parenthetical label.
+- The Dynamic Island and notch now inherit the neutral glass rim treatment instead of appearing as a mismatched black element.
+
 ## 1.1.0 — 2026-08-09
 
 ### Added

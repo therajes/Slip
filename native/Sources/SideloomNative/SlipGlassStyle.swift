@@ -1,5 +1,37 @@
 import SwiftUI
 
+private struct SlipDimensionalSymbolModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    let strength: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .symbolRenderingMode(.hierarchical)
+            .shadow(
+                color: .white.opacity(colorScheme == .dark ? 0.20 : 0.48),
+                radius: 0.45 * strength,
+                x: -0.35 * strength,
+                y: -0.55 * strength
+            )
+            .shadow(
+                color: .black.opacity(colorScheme == .dark ? 0.48 : 0.24),
+                radius: 1.35 * strength,
+                x: 0.65 * strength,
+                y: 1.15 * strength
+            )
+    }
+}
+
+struct SlipDimensionalLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon
+                .modifier(SlipDimensionalSymbolModifier(strength: 0.82))
+            configuration.title
+        }
+    }
+}
+
 struct SlipBackdrop: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -88,6 +120,7 @@ struct SlipStatusPill: View {
 
     var body: some View {
         Label(title, systemImage: symbol)
+            .labelStyle(SlipDimensionalLabelStyle())
             .font(.caption.weight(.semibold))
             .foregroundStyle(tint)
             .padding(.horizontal, 11)
@@ -104,10 +137,11 @@ struct SlipSymbolTile: View {
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: size * 0.45, weight: .medium))
-            .symbolRenderingMode(.hierarchical)
+            .slipDimensionalSymbol(strength: 1.15)
             .foregroundStyle(tint)
             .frame(width: size, height: size)
             .slipGlassSurface(tint: tint.opacity(0.10), interactive: true, cornerRadius: size * 0.32)
+            .shadow(color: .black.opacity(0.18), radius: 4, y: 2.5)
     }
 }
 
@@ -154,5 +188,9 @@ extension View {
 
     func slipProminentButton() -> some View {
         modifier(SlipProminentButtonModifier())
+    }
+
+    func slipDimensionalSymbol(strength: CGFloat = 1) -> some View {
+        modifier(SlipDimensionalSymbolModifier(strength: strength))
     }
 }

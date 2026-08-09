@@ -1,6 +1,6 @@
 # Slip feature matrix
 
-This matrix is the release contract for Slip 1.1. Slip is designed only for personal iPhones running stock iOS.
+This matrix is the release contract for Slip 1.1.1. Slip is designed only for personal iPhones running stock iOS.
 
 ## Shipped
 
@@ -15,13 +15,13 @@ This matrix is the release contract for Slip 1.1. Slip is designed only for pers
 | Metadata | Typed String, Boolean, Integer, and Real Info.plist overrides | Limited to top-level values so changes remain reviewable. |
 | Memory | Increased-memory entitlement request | Apple and the selected provisioning profile remain the final authority. |
 | Export | Save prepared IPA without installation | Useful for inspection, archiving, or a separate signing workflow. |
-| Accounts | Apple Account, 2FA, certificate management | Password storage is opt-in and uses macOS Keychain. |
+| Accounts | Apple Account profiles, local avatars, 2FA, certificate management | Password storage is opt-in and uses macOS Keychain; verified names come from Apple authentication while custom photos stay local. |
 | Installation | Direct stream, phase progress, bounded retries | A reconnect gets a fresh device session rather than reusing a broken channel. |
 | Devices | USB and paired local-network discovery, exact model preview | Slip resolves the trusted hardware identifier and renders model-aware Dynamic Island/notch and display proportions. USB is preferred for large transfers. |
 | Refresh | Saved recipes, Refresh All, launch-at-login guard | Default due time is about 24 hours before the seven-day deadline. |
-| Inventory | Read-only user-app listing | Matches installed bundle IDs to Slip refresh recipes. |
+| Inventory | Select, copy bundle IDs, refresh managed apps, uninstall user apps | Uninstall requires confirmation, reports partial failures, and removes matching refresh recipes so removed apps stay removed. |
 | Diagnostics | Activity timeline, copyable logs, privacy mode | Privacy mode hides Apple IDs, device IDs, and the user home path. |
-| Appearance | Native Liquid Glass, adaptive light/dark glass icon, motion control | Automatic icon mode follows the Mac appearance; Reduce Motion always takes priority. |
+| Appearance | Native Liquid Glass, adaptive light/dark glass icon, dimensional symbols, motion control | Automatic icon mode follows the Mac appearance; Reduce Motion always takes priority. |
 | Preflight | Bundle ID, iOS version, encryption, custom icon, typed plist, duplicate/protected-key validation | Blocking issues disable installation and explain the correction before Apple signing starts. |
 | Performance | Raw transfer of unchanged compressed IPA entries | A 196 MB test IPA prepared in 1.15 seconds versus 4.42 seconds in 1.0 on the same Mac. |
 

@@ -50,6 +50,13 @@ struct ExportRequest {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct UninstallAppsRequest {
+    device: DeviceInfo,
+    bundle_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PromptResponse {
     code: Option<String>,
     serials: Option<Vec<String>>,
@@ -184,6 +191,16 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
         .login(&request.password, Box::new(tfa_callback))
         .await
         .map_err(AppError::from)?;
+    if let Ok((first_name, last_name)) = account.get_name() {
+        let account_name = format!("{first_name} {last_name}").trim().to_string();
+        if !account_name.is_empty() {
+            emit(json!({
+                "type": "accountProfile",
+                "email": email,
+                "accountName": account_name,
+            }));
+        }
+    }
     let developer_session = DeveloperSession::from_account(&mut account)
         .await
         .map_err(AppError::from)?;
@@ -355,6 +372,40 @@ async fn list_installed_apps(device: &DeviceInfo) -> Result<Vec<Value>, AppError
     Ok(result)
 }
 
+async fn uninstall_apps(
+    request: UninstallAppsRequest,
+) -> Result<(Vec<String>, Vec<String>), AppError> {
+    if request.bundle_ids.is_empty() {
+        return Err(AppError::Misc(
+            "Select at least one app to uninstall".into(),
+        ));
+    }
+    let provider = get_provider(&request.device).await?;
+    let mut client = InstallationProxyClient::connect(&provider)
+        .await
+        .map_err(|error| {
+            AppError::DeviceComsWithMessage(
+                "Unable to open iPhone app management".into(),
+                error.to_string(),
+            )
+        })?;
+    let mut removed = Vec::new();
+    let mut errors = Vec::new();
+    for bundle_id in request.bundle_ids {
+        match client.uninstall(bundle_id.clone(), None).await {
+            Ok(()) => removed.push(bundle_id),
+            Err(error) => errors.push(format!("{bundle_id}: {error}")),
+        }
+    }
+    if removed.is_empty() && !errors.is_empty() {
+        return Err(AppError::DeviceComsWithMessage(
+            "Unable to uninstall the selected apps".into(),
+            errors.join(" • "),
+        ));
+    }
+    Ok((removed, errors))
+}
+
 async fn provisioned_account(
     email: &str,
     anisette_url: &str,
@@ -463,6 +514,19 @@ pub async fn run() -> Result<(), AppError> {
             emit(json!({ "type": "apps", "apps": apps }));
             Ok(())
         }
+        Some("uninstall") => {
+            let input = Arc::new(Mutex::new(BufReader::new(std::io::stdin())));
+            let request: UninstallAppsRequest = read_json(&input)?;
+            let (bundle_ids, errors) = uninstall_apps(request).await?;
+            let count = bundle_ids.len();
+            emit(json!({
+                "type": "uninstalled",
+                "bundleIds": bundle_ids,
+                "errors": errors,
+                "message": format!("Removed {count} app{} from the iPhone", if count == 1 { "" } else { "s" })
+            }));
+            Ok(())
+        }
         Some("network-check") => {
             let url = arguments
                 .next()
@@ -524,7 +588,7 @@ pub async fn run() -> Result<(), AppError> {
             install(request, input).await
         }
         _ => Err(AppError::Misc(
-            "Usage: sideloom-core devices | inspect <ipa> | icon <ipa> <destination> | enable-wifi <udid> | apps | export | network-check [url] | anisette-check [url] [storage] | install".into(),
+            "Usage: sideloom-core devices | inspect <ipa> | icon <ipa> <destination> | enable-wifi <udid> | apps | uninstall | export | network-check [url] | anisette-check [url] [storage] | install".into(),
         )),
     }
 }

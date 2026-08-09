@@ -31,6 +31,7 @@ struct ContentView: View {
         NavigationSplitView {
             List(SidebarSection.allCases, selection: $section) { item in
                 Label(item.rawValue, systemImage: item.symbol)
+                    .labelStyle(SlipDimensionalLabelStyle())
                     .symbolRenderingMode(.hierarchical)
                     .font(.body.weight(section == item ? .semibold : .regular))
                     .tag(item)
@@ -39,6 +40,7 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 10) {
                     Image(systemName: model.devices.isEmpty ? "iphone.slash" : model.selectedDevice?.connectionType.lowercased() == "network" ? "wifi" : "iphone")
+                        .slipDimensionalSymbol()
                         .foregroundStyle(model.devices.isEmpty ? Color.secondary : Color.accentColor)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.selectedDevice?.marketingName ?? "No iPhone")
@@ -63,6 +65,7 @@ struct ContentView: View {
                 case .activity: ActivityView()
                 }
             }
+            .labelStyle(SlipDimensionalLabelStyle())
             .id(section)
             .transition(.opacity.combined(with: .scale(scale: 0.992)))
             .animation(appearance.motionAllowed ? .smooth(duration: 0.26) : nil, value: section)
@@ -99,6 +102,7 @@ struct ContentView: View {
         .sheet(isPresented: $model.showTwoFactor) {
             VStack(alignment: .leading, spacing: 18) {
                 Label("Apple verification", systemImage: "checkmark.shield")
+                    .labelStyle(SlipDimensionalLabelStyle())
                     .font(.title2.bold())
                 Text("Enter the six-digit verification code sent by Apple.")
                     .foregroundStyle(.secondary)
@@ -206,10 +210,11 @@ struct PageHeader: View {
             Spacer()
             Image(systemName: "drop.halffull")
                 .font(.system(size: 26, weight: .light))
-                .symbolRenderingMode(.hierarchical)
+                .slipDimensionalSymbol(strength: 1.15)
                 .foregroundStyle(.tint)
                 .padding(13)
                 .slipGlassSurface(tint: Color.accentColor.opacity(0.10), cornerRadius: 18)
+                .shadow(color: .black.opacity(0.18), radius: 4, y: 2.5)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 30)

@@ -19,6 +19,7 @@ final class AppModel: ObservableObject {
     @Published var plistOverrides: [PlistOverride] = []
     @Published var keepAutomaticallyRefreshed = true
     @Published var accounts: [String] = []
+    @Published var accountProfiles: [String: AccountProfile] = [:]
     @Published var selectedAccount = ""
     @Published var isRefreshing = false
     @Published var isInspecting = false
@@ -36,6 +37,7 @@ final class AppModel: ObservableObject {
     @Published var managedInstallations: [ManagedInstallation] = []
     @Published var installedApps: [InstalledAppInfo] = []
     @Published var isLoadingInstalledApps = false
+    @Published var isUninstallingApps = false
     @Published var inspectionDuration: TimeInterval?
     @Published var lastInstallDuration: TimeInterval?
     @Published var refreshingManagedIDs: Set<String> = []
@@ -63,29 +65,39 @@ final class AppModel: ObservableObject {
 
     func reloadAccounts() {
         accounts = KeychainStore.accounts()
+        accountProfiles = AccountProfileStore.load(for: accounts)
         let preferred = UserDefaults.standard.string(forKey: "selectedAccount") ?? ""
         selectedAccount = accounts.contains(preferred) ? preferred : (accounts.first ?? "")
     }
 
-    func saveAccount(email: String, password: String) {
+    @discardableResult
+    func saveAccount(email: String, password: String, profileName: String = "", profileImageURL: URL? = nil) -> Bool {
         do {
             let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             guard normalized.contains("@"), !password.isEmpty else {
                 throw SideloomError.message("Enter a valid Apple Account and password.")
             }
             try KeychainStore.save(account: normalized, password: password)
+            try AccountProfileStore.upsert(
+                email: normalized,
+                displayName: profileName,
+                imageURL: profileImageURL
+            )
             reloadAccounts()
             selectedAccount = normalized
             UserDefaults.standard.set(normalized, forKey: "selectedAccount")
             appendActivity("Saved \(normalized) in macOS Keychain")
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
     func deleteAccount(_ email: String) {
         do {
             try KeychainStore.delete(account: email)
+            try? AccountProfileStore.delete(email)
             reloadAccounts()
             appendActivity("Removed \(email) from macOS Keychain")
         } catch {
@@ -96,6 +108,24 @@ final class AppModel: ObservableObject {
     func chooseAccount(_ email: String) {
         selectedAccount = email
         UserDefaults.standard.set(email, forKey: "selectedAccount")
+    }
+
+    func updateAccountPhoto(_ imageURL: URL, for email: String) {
+        do {
+            try AccountProfileStore.upsert(email: email, displayName: nil, imageURL: imageURL)
+            reloadAccounts()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func removeAccountPhoto(for email: String) {
+        do {
+            try AccountProfileStore.removeImage(for: email)
+            reloadAccounts()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func refreshDevices() async {
@@ -255,6 +285,51 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func copyBundleIDs(_ bundleIDs: Set<String>) {
+        guard !bundleIDs.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(bundleIDs.sorted().joined(separator: "\n"), forType: .string)
+        appendActivity("Copied \(bundleIDs.count) bundle ID\(bundleIDs.count == 1 ? "" : "s")")
+    }
+
+    func refreshManagedInstallations(_ ids: Set<String>) {
+        let available = ids.subtracting(refreshingManagedIDs)
+        guard !available.isEmpty else { return }
+        refreshingManagedIDs.formUnion(available)
+        Task {
+            let result = await AutoRefreshWorker.runDue(forceIDs: available)
+            refreshingManagedIDs.subtract(available)
+            reloadManagedInstallations()
+            appendActivity("Selected refresh finished: \(result.succeeded)/\(result.attempted) succeeded")
+        }
+    }
+
+    @discardableResult
+    func uninstallApps(bundleIDs: Set<String>) async -> Set<String> {
+        guard !isUninstallingApps, let device = selectedDevice, !bundleIDs.isEmpty else { return [] }
+        isUninstallingApps = true
+        defer { isUninstallingApps = false }
+        do {
+            let request = UninstallAppsRequest(device: device, bundleIds: bundleIDs.sorted())
+            let event = try await core.run(["uninstall"], input: request)
+            let removed = Set(event.bundleIds ?? [])
+            installedApps.removeAll { removed.contains($0.bundleId) }
+            if !removed.isEmpty {
+                removeRefreshRecipes(for: removed)
+            }
+            appendActivity(event.message ?? "Removed \(removed.count) app\(removed.count == 1 ? "" : "s") from \(device.marketingName)")
+            if let errors = event.errors, !errors.isEmpty {
+                errorMessage = errors.joined(separator: "\n")
+                appendActivity("Some selected apps could not be removed")
+            }
+            return removed
+        } catch {
+            errorMessage = friendlyMessage(for: error)
+            appendActivity("Uninstall failed: \(friendlyMessage(for: error))")
+            return []
+        }
+    }
+
     func install() {
         guard !isInstalling else { return }
         guard let ipa, let selectedDevice else {
@@ -369,14 +444,7 @@ final class AppModel: ObservableObject {
 
     func refreshAllManagedInstallations() {
         let ids = Set(managedInstallations.filter(\.enabled).map(\.id))
-        guard !ids.isEmpty else { return }
-        refreshingManagedIDs.formUnion(ids)
-        Task {
-            let result = await AutoRefreshWorker.runDue(forceIDs: ids)
-            refreshingManagedIDs.subtract(ids)
-            reloadManagedInstallations()
-            appendActivity("Refresh All finished: \(result.succeeded)/\(result.attempted) succeeded")
-        }
+        refreshManagedInstallations(ids)
     }
 
     private func consumeInstall(_ request: InstallRequest, ipa: IpaInfo) async {
@@ -390,6 +458,11 @@ final class AppModel: ObservableObject {
                 case "twoFactorRequired":
                     showTwoFactor = true
                     appendActivity("Apple requested a verification code")
+                case "accountProfile":
+                    if let email = event.email, let accountName = event.accountName {
+                        try? AccountProfileStore.upsert(email: email, displayName: accountName)
+                        reloadAccounts()
+                    }
                 case "certificateSelectionRequired":
                     certificates = event.certificates ?? []
                     showCertificates = true
@@ -527,6 +600,20 @@ final class AppModel: ObservableObject {
             enableFileSharing: enableFileSharing,
             plistOverrides: plistOverrides.filter { !$0.key.trimmed.isEmpty }
         )
+    }
+
+    private func removeRefreshRecipes(for bundleIDs: Set<String>) {
+        var installations = AutoRefreshStore.load()
+        let originalCount = installations.count
+        installations.removeAll { bundleIDs.contains($0.bundleId) }
+        guard installations.count != originalCount else { return }
+        do {
+            try AutoRefreshStore.save(installations)
+            reloadManagedInstallations()
+            appendActivity("Removed matching Auto Refresh schedules")
+        } catch {
+            errorMessage = "The apps were removed, but Slip could not remove their Auto Refresh schedules: \(error.localizedDescription)"
+        }
     }
 
     private func loadIPAPreview(for info: IpaInfo) async {

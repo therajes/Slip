@@ -125,8 +125,22 @@ struct InstallView: View {
                         SlipSymbolTile(symbol: "iphone.gen3", tint: .secondary, size: 52)
                     }
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(model.selectedDevice?.marketingName ?? "Connect an iPhone")
-                            .font(.title3.weight(.semibold))
+                        if let device = model.selectedDevice {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(device.displayName)
+                                    .font(.title3.weight(.semibold))
+                                    .lineLimit(1)
+                                if device.showsModelBesideName {
+                                    Text("(\(device.marketingName))")
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        } else {
+                            Text("Connect an iPhone")
+                                .font(.title3.weight(.semibold))
+                        }
                         Text(model.selectedDevice.map { "\($0.connectionType) connection · iOS \($0.version)" } ?? "Unlock, connect USB, and tap Trust.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -136,7 +150,7 @@ struct InstallView: View {
                         Task { await model.refreshDevices() }
                     } label: {
                         if model.isRefreshing { ProgressView().controlSize(.small) }
-                        else { Image(systemName: "arrow.clockwise") }
+                        else { Image(systemName: "arrow.clockwise").slipDimensionalSymbol() }
                     }
                     .help("Refresh iPhones")
                     .disabled(model.isRefreshing || model.isInstalling)
@@ -145,7 +159,7 @@ struct InstallView: View {
                 if !model.devices.isEmpty {
                     Picker("Destination", selection: $model.selectedDevice) {
                         ForEach(model.devices) { device in
-                            Text("\(device.marketingName) · \(device.connectionType)").tag(Optional(device))
+                            Text("\(device.displayName)\(device.showsModelBesideName ? " (\(device.marketingName))" : "") · \(device.connectionType)").tag(Optional(device))
                         }
                     }
                     .labelsHidden()
@@ -195,6 +209,7 @@ struct InstallView: View {
                                 Button("Remove IPA", role: .destructive) { model.clearIPA() }
                             } label: {
                                 Image(systemName: "ellipsis.circle")
+                                    .slipDimensionalSymbol()
                             }
                             .menuStyle(.borderlessButton)
                         }
@@ -213,7 +228,7 @@ struct InstallView: View {
                     VStack(spacing: 12) {
                         Image(systemName: model.isInspecting ? "sparkle.magnifyingglass" : "square.and.arrow.down.on.square")
                             .font(.system(size: 34, weight: .light))
-                            .symbolRenderingMode(.hierarchical)
+                            .slipDimensionalSymbol(strength: 1.18)
                             .foregroundStyle(dropActive ? Color.accentColor : .secondary)
                             .scaleEffect(dropActive ? 1.12 : 1)
                         Text(model.isInspecting ? "Inspecting IPA…" : "Drop an IPA")
@@ -408,7 +423,10 @@ struct InstallView: View {
                     }
                     .labelsHidden().frame(width: 110)
                     TextField(item.valueType == "Boolean" ? "true or false" : "Value", text: $item.value)
-                    Button(role: .destructive) { model.removePlistOverride(item.id) } label: { Image(systemName: "minus.circle") }
+                    Button(role: .destructive) { model.removePlistOverride(item.id) } label: {
+                        Image(systemName: "minus.circle")
+                            .slipDimensionalSymbol(strength: 0.72)
+                    }
                         .buttonStyle(.plain)
                 }
             }
@@ -421,7 +439,7 @@ struct InstallView: View {
                 ForEach(model.installReadiness) { issue in
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: issue.symbol)
-                            .symbolRenderingMode(.hierarchical)
+                            .slipDimensionalSymbol(strength: 0.82)
                             .foregroundStyle(color(for: issue.level))
                             .frame(width: 22)
                         VStack(alignment: .leading, spacing: 2) {
