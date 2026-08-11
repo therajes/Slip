@@ -88,6 +88,7 @@ struct InstalledAppInfo: Codable, Hashable, Identifiable {
     let version: String
     let buildVersion: String
     let applicationType: String
+    let iconData: String?
 
     var id: String { bundleId }
 }

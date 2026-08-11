@@ -1,13 +1,13 @@
 # Slip feature matrix
 
-This matrix is the release contract for Slip 1.1.1. Slip is designed only for personal iPhones running stock iOS.
+This matrix is the release contract for Slip 1.1.2. Slip is designed only for personal iPhones running stock iOS.
 
 ## Shipped
 
 | Area | Capability | Notes |
 | --- | --- | --- |
 | IPA input | Drag and drop, Finder, HTTPS URL, `slip://` | URL imports retry transient network failures and are kept locally for refresh. |
-| Inspection | Identity, artwork, version, build, minimum iOS, size, main executable, encryption | The real bundled icon is previewed, including legacy Apple CgBI PNGs; encrypted executables are blocked before signing. |
+| Inspection | Identity, artwork, version, build, minimum iOS, size, main executable, encryption | Artwork follows the IPA’s declared icon metadata, with safe fallbacks for unusual names and legacy Apple CgBI PNGs; encrypted executables are blocked before signing. |
 | Extensions | Inspect, keep individually, remove individually, remove all | Slip shows the resulting App ID cost before installation. |
 | Identity | App name, bundle ID, icon | Extension bundle IDs follow the changed main bundle ID where safe. |
 | Compatibility | Minimum iOS override, remove `UISupportedDevices` | Overrides cannot make an app compatible when its binary or frameworks require newer APIs. |
@@ -19,7 +19,7 @@ This matrix is the release contract for Slip 1.1.1. Slip is designed only for pe
 | Installation | Direct stream, phase progress, bounded retries | A reconnect gets a fresh device session rather than reusing a broken channel. |
 | Devices | USB and paired local-network discovery, exact model preview | Slip resolves the trusted hardware identifier and renders model-aware Dynamic Island/notch and display proportions. USB is preferred for large transfers. |
 | Refresh | Saved recipes, Refresh All, launch-at-login guard | Default due time is about 24 hours before the seven-day deadline. |
-| Inventory | Select, copy bundle IDs, refresh managed apps, uninstall user apps | Uninstall requires confirmation, reports partial failures, and removes matching refresh recipes so removed apps stay removed. |
+| Inventory | Native app icons, select, copy bundle IDs, refresh managed apps, uninstall user apps | Icons are read from the paired iPhone through SpringBoard; uninstall requires confirmation, reports partial failures, and removes matching refresh recipes so removed apps stay removed. |
 | Diagnostics | Activity timeline, copyable logs, privacy mode | Privacy mode hides Apple IDs, device IDs, and the user home path. |
 | Appearance | Native Liquid Glass, adaptive light/dark glass icon, dimensional symbols, motion control | Automatic icon mode follows the Mac appearance; Reduce Motion always takes priority. |
 | Preflight | Bundle ID, iOS version, encryption, custom icon, typed plist, duplicate/protected-key validation | Blocking issues disable installation and explain the correction before Apple signing starts. |

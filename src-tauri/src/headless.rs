@@ -5,8 +5,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures::FutureExt;
-use idevice::{IdeviceService, installation_proxy::InstallationProxyClient};
+use idevice::{
+    IdeviceService, installation_proxy::InstallationProxyClient,
+    springboardservices::SpringBoardServicesClient,
+};
 use isideload::{
     anisette::remote_v3::{DEFAULT_ANISETTE_V3_URL, RemoteV3AnisetteProvider},
     auth::apple_account::{AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
@@ -339,30 +343,44 @@ async fn list_installed_apps(device: &DeviceInfo) -> Result<Vec<Value>, AppError
             error.to_string(),
         )
     })?;
-    let mut result: Vec<_> = apps
-        .into_iter()
-        .map(|(bundle_id, value)| {
-            let info = value.as_dictionary();
-            let string = |key: &str| {
-                info.and_then(|dictionary| dictionary.get(key))
-                    .and_then(|value| value.as_string())
-                    .unwrap_or("")
-            };
-            let display_name = string("CFBundleDisplayName");
-            let name = if display_name.is_empty() {
-                string("CFBundleName")
-            } else {
-                display_name
-            };
-            json!({
-                "bundleId": bundle_id,
-                "name": name,
-                "version": string("CFBundleShortVersionString"),
-                "buildVersion": string("CFBundleVersion"),
-                "applicationType": string("ApplicationType"),
-            })
-        })
-        .collect();
+    drop(client);
+
+    // SpringBoard exposes the exact icon iOS is displaying. Keep this optional:
+    // an inventory is still useful even if an individual app or iOS version refuses
+    // icon access.
+    let mut springboard = SpringBoardServicesClient::connect(&provider).await.ok();
+    let mut result = Vec::with_capacity(apps.len());
+    for (bundle_id, value) in apps {
+        let info = value.as_dictionary();
+        let string = |key: &str| {
+            info.and_then(|dictionary| dictionary.get(key))
+                .and_then(|value| value.as_string())
+                .unwrap_or("")
+        };
+        let display_name = string("CFBundleDisplayName");
+        let name = if display_name.is_empty() {
+            string("CFBundleName")
+        } else {
+            display_name
+        };
+        let icon_data = if let Some(client) = springboard.as_mut() {
+            client
+                .get_icon_pngdata(bundle_id.clone())
+                .await
+                .ok()
+                .map(|data| STANDARD.encode(data))
+        } else {
+            None
+        };
+        result.push(json!({
+            "bundleId": bundle_id,
+            "name": name,
+            "version": string("CFBundleShortVersionString"),
+            "buildVersion": string("CFBundleVersion"),
+            "applicationType": string("ApplicationType"),
+            "iconData": icon_data,
+        }));
+    }
     result.sort_by_key(|app| {
         app.get("name")
             .and_then(Value::as_str)

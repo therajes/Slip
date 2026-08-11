@@ -50,7 +50,7 @@ Requirements: macOS 15 or newer, Xcode command-line tools, Rust, and an Apple-si
 
 ```sh
 ./native/build.sh
-./native/create-dmg.sh native/build/Slip.app native/dist/Slip-1.1.1.dmg
+./native/create-dmg.sh native/build/Slip.app native/dist/Slip-1.1.2.dmg
 ```
 
 Verification:

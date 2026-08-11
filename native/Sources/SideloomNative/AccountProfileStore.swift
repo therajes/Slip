@@ -114,9 +114,9 @@ enum AccountProfileStore {
         let accessed = source.startAccessingSecurityScopedResource()
         defer { if accessed { source.stopAccessingSecurityScopedResource() } }
         guard let image = NSImage(contentsOf: source),
-              let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:]) else {
+              image.size.width > 0,
+              image.size.height > 0,
+              let png = normalizedProfilePNG(from: image) else {
             throw SideloomError.message("The selected profile picture could not be read.")
         }
 
@@ -132,5 +132,51 @@ enum AccountProfileStore {
         let destination = directory.appending(path: "\(digest).png")
         try png.write(to: destination, options: .atomic)
         return destination
+    }
+
+    /// Stores a small, square copy rather than retaining an arbitrarily large source image.
+    /// This keeps account rows predictable and avoids decoding a multi-megapixel photo on
+    /// every redraw.
+    private static func normalizedProfilePNG(from image: NSImage) -> Data? {
+        let pixels = 512
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixels,
+            pixelsHigh: pixels,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
+
+        let width = image.size.width
+        let height = image.size.height
+        let side = min(width, height)
+        let source = NSRect(
+            x: (width - side) / 2,
+            y: (height - side) / 2,
+            width: side,
+            height: side
+        )
+        let destination = NSRect(x: 0, y: 0, width: pixels, height: pixels)
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        context.imageInterpolation = .high
+        NSColor.clear.setFill()
+        destination.fill()
+        image.draw(
+            in: destination,
+            from: source,
+            operation: .copy,
+            fraction: 1,
+            respectFlipped: false,
+            hints: [.interpolation: NSImageInterpolation.high]
+        )
+        NSGraphicsContext.restoreGraphicsState()
+        return bitmap.representation(using: .png, properties: [:])
     }
 }

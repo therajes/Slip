@@ -362,8 +362,48 @@ pub fn inspect_ipa(app_path: String) -> Result<IpaInfo, AppError> {
     Ok(parse_ipa(Path::new(&app_path))?.info)
 }
 
+fn declared_icon_names(info: &Dictionary) -> HashSet<String> {
+    fn normalized(value: &str) -> String {
+        let file_name = Path::new(value)
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| value.to_string());
+        file_name
+            .strip_suffix(".png")
+            .or_else(|| file_name.strip_suffix(".PNG"))
+            .unwrap_or(&file_name)
+            .to_ascii_lowercase()
+    }
+
+    fn collect(container: &Dictionary, result: &mut HashSet<String>) {
+        if let Some(name) = container.get("CFBundleIconName").and_then(Value::as_string) {
+            result.insert(normalized(name));
+        }
+        if let Some(files) = container.get("CFBundleIconFiles").and_then(Value::as_array) {
+            for file in files.iter().filter_map(Value::as_string) {
+                result.insert(normalized(file));
+            }
+        }
+    }
+
+    let mut result = HashSet::new();
+    collect(info, &mut result);
+    for key in ["CFBundleIcons", "CFBundleIcons~ipad"] {
+        if let Some(primary) = info
+            .get(key)
+            .and_then(Value::as_dictionary)
+            .and_then(|icons| icons.get("CFBundlePrimaryIcon"))
+            .and_then(Value::as_dictionary)
+        {
+            collect(primary, &mut result);
+        }
+    }
+    result
+}
+
 pub fn extract_ipa_icon(app_path: String, destination: String) -> Result<String, AppError> {
     let parsed = parse_ipa(Path::new(&app_path))?;
+    let declared_icons = declared_icon_names(&parsed.main_info);
     let file = File::open(&app_path).map_err(|error| {
         AppError::Filesystem(
             "Unable to open IPA for icon preview".into(),
@@ -383,26 +423,34 @@ pub fn extract_ipa_icon(app_path: String, destination: String) -> Result<String,
             continue;
         };
         let lower = relative.to_ascii_lowercase();
-        if relative.contains('/') || !lower.ends_with(".png") || !lower.contains("icon") {
+        if relative.contains('/') || !lower.ends_with(".png") {
             continue;
         }
 
-        let score = if lower.contains("appicon") {
+        let stem = lower.strip_suffix(".png").unwrap_or(&lower);
+        let declared = declared_icons.iter().any(|name| stem.starts_with(name));
+        let score = if declared {
+            40_000
+        } else if lower.contains("appicon") {
+            25_000
+        } else if lower.contains("icon") {
             20_000
+        } else if lower.contains("logo") {
+            15_000
         } else {
-            10_000
+            1_000
         } + if lower.contains("@3x") {
             300
         } else if lower.contains("@2x") {
             200
         } else {
             0
-        } + if lower.contains("~ipad") { 25 } else { 0 };
-        candidates.push((score, entry.size(), name));
+        } + if lower.contains("~ipad") { 0 } else { 50 };
+        candidates.push((score, declared, entry.size(), name));
     }
 
     let mut best: Option<(u64, Vec<u8>)> = None;
-    for (name_score, archived_size, name) in candidates {
+    for (name_score, declared, archived_size, name) in candidates {
         let mut entry = archive.by_name(&name).map_err(|error| {
             AppError::Filesystem("Unable to read IPA icon".into(), error.to_string())
         })?;
@@ -414,11 +462,20 @@ pub fn extract_ipa_icon(app_path: String, destination: String) -> Result<String,
         // ImageIO on macOS displays those directly even though the portable
         // Rust decoder cannot, so retain the original bytes as a fallback.
         let (detail_score, preview) = match image::load_from_memory(&bytes) {
-            Ok(image) => (
-                image.width() as u64 * image.height() as u64,
-                make_icon(&image, 256)?,
-            ),
-            Err(_) => (archived_size, bytes),
+            Ok(image) => {
+                let shortest = image.width().min(image.height());
+                let longest = image.width().max(image.height());
+                let square_enough = shortest >= 40 && shortest.saturating_mul(100) / longest >= 82;
+                if !square_enough && name_score == 1_000 {
+                    continue;
+                }
+                (
+                    image.width() as u64 * image.height() as u64,
+                    make_icon(&image, 256)?,
+                )
+            }
+            Err(_) if declared || name_score >= 15_000 => (archived_size, bytes),
+            Err(_) => continue,
         };
         let score = name_score as u64 * 1_000_000 + detail_score;
         if best
@@ -805,10 +862,21 @@ mod tests {
             "CFBundleVersion".to_string(),
             Value::String("42".to_string()),
         );
+        let mut primary_icon = Dictionary::new();
+        primary_icon.insert(
+            "CFBundleIconFiles".to_string(),
+            Value::Array(vec![Value::String("BrandMark60x60".to_string())]),
+        );
+        let mut icons = Dictionary::new();
+        icons.insert(
+            "CFBundlePrimaryIcon".to_string(),
+            Value::Dictionary(primary_icon),
+        );
+        app.insert("CFBundleIcons".to_string(), Value::Dictionary(icons));
         zip.start_file("Payload/Test.app/Info.plist", options)
             .unwrap();
         zip.write_all(&plist_bytes(&app).unwrap()).unwrap();
-        zip.start_file("Payload/Test.app/AppIcon60x60@2x.png", options)
+        zip.start_file("Payload/Test.app/BrandMark60x60@2x.png", options)
             .unwrap();
         zip.write_all(&make_icon(&DynamicImage::new_rgba8(120, 120), 120).unwrap())
             .unwrap();

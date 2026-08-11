@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct DeviceAppsView: View {
@@ -176,11 +177,7 @@ struct DeviceAppsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(selected ? "Deselect \(app.name)" : "Select \(app.name)")
-            Image(systemName: managedRecipe(for: app) == nil ? "app" : "arrow.clockwise.circle.fill")
-                .font(.title2)
-                .slipDimensionalSymbol()
-                .foregroundStyle(managedRecipe(for: app) == nil ? Color.secondary : Color.green)
-                .frame(width: 34)
+            InstalledAppIcon(app: app, isManaged: managedRecipe(for: app) != nil)
             VStack(alignment: .leading, spacing: 3) {
                 Text(app.name.isEmpty ? app.bundleId : app.name).fontWeight(.semibold)
                 Text(app.bundleId).font(.caption.monospaced()).foregroundStyle(.secondary)
@@ -211,6 +208,71 @@ struct DeviceAppsView: View {
 
     private func managedRecipe(for app: InstalledAppInfo) -> ManagedInstallation? {
         model.managedInstallations.first { $0.bundleId == app.bundleId }
+    }
+}
+
+private struct InstalledAppIcon: View {
+    let app: InstalledAppInfo
+    let isManaged: Bool
+
+    private var icon: NSImage? {
+        guard let encoded = app.iconData,
+              let data = Data(base64Encoded: encoded) else { return nil }
+        return NSImage(data: data)
+    }
+
+    private var initials: String {
+        let value = (app.name.isEmpty ? app.bundleId : app.name)
+            .split(whereSeparator: { $0.isWhitespace || $0 == "." || $0 == "-" || $0 == "_" })
+            .prefix(2)
+            .compactMap(\.first)
+            .map(String.init)
+            .joined()
+            .uppercased()
+        return value.isEmpty ? "A" : value
+    }
+
+    var body: some View {
+        ZStack {
+            if let icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFill()
+                    .frame(width: 40, height: 40)
+                    .clipped()
+            } else {
+                LinearGradient(
+                    colors: [Color.accentColor.opacity(0.72), .cyan.opacity(0.34), .white.opacity(0.16)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Text(initials)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.28), radius: 1, y: 1)
+            }
+        }
+        .frame(width: 40, height: 40)
+        .fixedSize(horizontal: true, vertical: true)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(.white.opacity(0.35), lineWidth: 0.8)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if isManaged {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white, .green)
+                    .background(Circle().fill(.green).padding(1))
+                    .offset(x: 4, y: 4)
+                    .accessibilityHidden(true)
+            }
+        }
+        .shadow(color: .white.opacity(0.16), radius: 1, x: -0.5, y: -0.5)
+        .shadow(color: .black.opacity(0.30), radius: 4, y: 2)
+        .accessibilityLabel("\(app.name.isEmpty ? app.bundleId : app.name) icon")
     }
 }
 

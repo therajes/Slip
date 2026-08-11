@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.2 — 2026-08-11
+
+### Added
+
+- Added the real on-device artwork for every iPhone Apps inventory row, read from iOS SpringBoard with a resilient initials fallback when an icon is unavailable.
+
+### Fixed
+
+- IPA artwork extraction now follows `CFBundleIcons` and `CFBundleIconFiles`, so valid icons with names such as `logo_youtube…` appear instead of working only for filenames containing “icon.”
+- Apple Account profile photos are center-cropped, downsampled, and hard-constrained to the avatar frame instead of expanding the account view.
+- Removed the checkbox-like generic app placeholder from iPhone Apps, leaving one explicit selection checkbox per row and a small refresh badge only for Slip-managed apps.
+
+### Performance
+
+- Reuses one SpringBoard connection while retrieving the installed-app icon set and keeps icon failure non-blocking, preserving a fast and reliable inventory load.
+
 ## 1.1.1 — 2026-08-09
 
 ### Added

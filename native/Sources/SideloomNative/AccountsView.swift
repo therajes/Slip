@@ -92,7 +92,8 @@ struct AccountsView: View {
                 AccountAvatar(profile: profile, selected: selected, size: 48)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
+            .frame(width: 48, height: 48)
+            .fixedSize(horizontal: true, vertical: true)
             .help("Change profile picture")
 
             VStack(alignment: .leading, spacing: 3) {
@@ -229,7 +230,10 @@ private struct AccountAvatar: View {
             if let image {
                 Image(nsImage: image)
                     .resizable()
+                    .interpolation(.high)
                     .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipped()
             } else {
                 LinearGradient(
                     colors: [Color.accentColor.opacity(0.76), Color.cyan.opacity(0.42), .white.opacity(0.18)],
@@ -243,6 +247,7 @@ private struct AccountAvatar: View {
             }
         }
         .frame(width: size, height: size)
+        .fixedSize(horizontal: true, vertical: true)
         .clipShape(Circle())
         .overlay {
             Circle().stroke(
