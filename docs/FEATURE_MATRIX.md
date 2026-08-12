@@ -1,6 +1,6 @@
 # Slip feature matrix
 
-This matrix is the release contract for Slip 1.1.2. Slip is designed only for personal iPhones running stock iOS.
+This matrix is the release contract for Slip 2.0.0. Slip is designed only for personal iPhones running stock iOS.
 
 ## Shipped
 
@@ -15,7 +15,8 @@ This matrix is the release contract for Slip 1.1.2. Slip is designed only for pe
 | Metadata | Typed String, Boolean, Integer, and Real Info.plist overrides | Limited to top-level values so changes remain reviewable. |
 | Memory | Increased-memory entitlement request | Apple and the selected provisioning profile remain the final authority. |
 | Export | Save prepared IPA without installation | Useful for inspection, archiving, or a separate signing workflow. |
-| Accounts | Apple Account profiles, local avatars, 2FA, certificate management | Password storage is opt-in and uses macOS Keychain; verified names come from Apple authentication while custom photos stay local. |
+| Accounts | Identity cards, verified names, generated initials, 2FA, certificate management | Passwords use macOS Keychain and are retrieved only for authenticated Apple operations. User-uploaded profile photos are deliberately not stored. |
+| App IDs | Active identifiers, quota, reset times, team and usage context | Data comes from Apple after authentication; extension relationships are inferred from identifiers and known Slip recipes. |
 | Installation | Direct stream, phase progress, bounded retries | A reconnect gets a fresh device session rather than reusing a broken channel. |
 | Devices | USB and paired local-network discovery, exact model preview | Slip resolves the trusted hardware identifier and renders model-aware Dynamic Island/notch and display proportions. USB is preferred for large transfers. |
 | Refresh | Saved recipes, Refresh All, launch-at-login guard | Default due time is about 24 hours before the seven-day deadline. |
@@ -34,7 +35,7 @@ This matrix is the release contract for Slip 1.1.2. Slip is designed only for pe
 | Mac-free background refresh | Stock iOS does not allow a third-party Mac installer to silently renew other app signatures on its own. | Refresh Guard requires this Mac and a reachable paired iPhone. |
 | JIT on iOS 27 | Public desktop sideloading JIT techniques do not support current iOS releases without additional Apple-granted capabilities or security-sensitive workflows. | No misleading JIT switch is shown on unsupported iOS. |
 | Arbitrary entitlements | An entitlement must be permitted by the app ID and provisioning profile; adding text alone does not grant it. | Slip exposes only reviewed transformations and reports signing failures honestly. |
-| Tweak/dylib injection | Safe injection requires architecture-aware Mach-O editing, dependency validation, compatible decrypted binaries, and extensive runtime testing. | Not shipped in 1.1; Slip will not bolt on an unverified injector that produces crash-prone IPAs. |
+| Tweak/dylib injection | Safe injection requires architecture-aware Mach-O editing, dependency validation, compatible decrypted binaries, and extensive runtime testing. | Not shipped in 2.0; Slip will not bolt on an unverified injector that produces crash-prone IPAs. |
 | No-sign/jailbreak modes | These target a different trust and security model. | Outside the stock-iPhone scope. |
 
 ## Explicitly out of scope

@@ -26,6 +26,7 @@ struct ContentView: View {
     @State private var section: SidebarSection? = .install
     @State private var twoFactorCode = ""
     @State private var selectedCertificates: Set<String> = []
+    @State private var pendingRemoteIPAURL: String?
 
     var body: some View {
         NavigationSplitView {
@@ -88,8 +89,24 @@ struct ContentView: View {
             if url.scheme?.lowercased() == "slip",
                let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
                let remote = components.queryItems?.first(where: { $0.name == "url" })?.value {
+                pendingRemoteIPAURL = remote
+            }
+        }
+        .alert("Download this IPA?", isPresented: Binding(
+            get: { pendingRemoteIPAURL != nil },
+            set: { if !$0 { pendingRemoteIPAURL = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { pendingRemoteIPAURL = nil }
+            Button("Download") {
+                guard let remote = pendingRemoteIPAURL else { return }
+                pendingRemoteIPAURL = nil
                 Task { await model.downloadIPA(from: remote) }
             }
+        } message: {
+            let host = pendingRemoteIPAURL
+                .flatMap(URL.init(string:))?
+                .host(percentEncoded: false) ?? "Unknown source"
+            Text("Slip links may download large files. Continue only if you trust \(host).")
         }
         .alert("Slip", isPresented: Binding(
             get: { model.errorMessage != nil },
@@ -110,8 +127,15 @@ struct ContentView: View {
                     .textFieldStyle(.roundedBorder)
                     .font(.title2.monospacedDigit())
                     .frame(width: 180)
+                    .onChange(of: twoFactorCode) { _, value in
+                        let digits = value.filter(\.isNumber)
+                        twoFactorCode = String(digits.prefix(6))
+                    }
                 HStack {
-                    Button("Cancel", role: .cancel) { model.submitTwoFactor(nil) }
+                    Button("Cancel", role: .cancel) {
+                        twoFactorCode = ""
+                        model.submitTwoFactor(nil)
+                    }
                     Spacer()
                     Button("Continue") {
                         model.submitTwoFactor(twoFactorCode)
@@ -123,6 +147,7 @@ struct ContentView: View {
             }
             .padding(28)
             .frame(width: 420)
+            .onDisappear { twoFactorCode = "" }
         }
         .sheet(isPresented: $model.showCertificates) {
             VStack(alignment: .leading, spacing: 16) {
@@ -130,7 +155,7 @@ struct ContentView: View {
                     .font(.title2.bold())
                 Text("Apple has reached its certificate limit. Select certificates Slip may revoke.")
                     .foregroundStyle(.secondary)
-                List(model.certificates, selection: $selectedCertificates) { certificate in
+                List(model.certificates.filter { $0.serialNumber?.isEmpty == false }, selection: $selectedCertificates) { certificate in
                     VStack(alignment: .leading) {
                         Text(certificate.name ?? "Development certificate")
                         Text(certificate.machineName ?? certificate.serialNumber ?? "Unknown")
@@ -182,7 +207,7 @@ struct ActivityView: View {
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 12)
-            List(model.visibleActivity, id: \.self) { entry in
+            List(Array(model.visibleActivity.enumerated()), id: \.offset) { _, entry in
                 Label(entry, systemImage: "circle.fill")
                     .symbolRenderingMode(.hierarchical)
                     .font(.callout)

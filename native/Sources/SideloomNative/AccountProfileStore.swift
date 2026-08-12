@@ -1,11 +1,8 @@
-import AppKit
-import CryptoKit
 import Foundation
 
 struct AccountProfile: Codable, Hashable, Identifiable {
     let email: String
     var displayName: String
-    var imagePath: String?
 
     var id: String { email }
 
@@ -22,6 +19,7 @@ enum AccountProfileStore {
     private static let defaultsKey = "appleAccountProfiles"
 
     static func load(for accounts: [String]) -> [String: AccountProfile] {
+        removeLegacyProfilePictures()
         let saved: [AccountProfile]
         if let data = UserDefaults.standard.data(forKey: defaultsKey),
            let decoded = try? JSONDecoder().decode([AccountProfile].self, from: data) {
@@ -30,60 +28,47 @@ enum AccountProfileStore {
             saved = []
         }
 
-        let savedByEmail = Dictionary(uniqueKeysWithValues: saved.map { ($0.email.lowercased(), $0) })
-        return Dictionary(uniqueKeysWithValues: accounts.map { email in
+        var savedByEmail: [String: AccountProfile] = [:]
+        for profile in saved {
+            let sanitized = sanitizedProfile(profile)
+            savedByEmail[sanitized.email] = sanitized
+        }
+        let result = Dictionary(uniqueKeysWithValues: accounts.map { email in
             let key = email.lowercased()
             return (key, savedByEmail[key] ?? AccountProfile(
                 email: key,
-                displayName: inferredName(from: key),
-                imagePath: nil
+                displayName: inferredName(from: key)
             ))
         })
+        // Re-encode the current initials-only schema so obsolete image-path fields
+        // disappear from preferences as soon as this release runs.
+        try? save(Array(result.values))
+        return result
     }
 
-    static func upsert(
-        email: String,
-        displayName: String?,
-        imageURL: URL? = nil
-    ) throws {
+    static func upsert(email: String, displayName: String?) throws {
         let key = email.lowercased()
         var profiles = Array(loadAll().values)
         var profile = profiles.first(where: { $0.email == key }) ?? AccountProfile(
             email: key,
-            displayName: inferredName(from: key),
-            imagePath: nil
+            displayName: inferredName(from: key)
         )
 
         if let displayName {
-            let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { profile.displayName = trimmed }
+            let trimmed = displayName
+                .replacingOccurrences(of: "\r", with: " ")
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { profile.displayName = String(trimmed.prefix(80)) }
         }
-        if let imageURL {
-            profile.imagePath = try persistImage(from: imageURL, for: key).path
-        }
-
         profiles.removeAll { $0.email == key }
         profiles.append(profile)
-        try save(profiles)
-    }
-
-    static func removeImage(for email: String) throws {
-        let key = email.lowercased()
-        var profiles = Array(loadAll().values)
-        guard let index = profiles.firstIndex(where: { $0.email == key }) else { return }
-        if let imagePath = profiles[index].imagePath {
-            try? FileManager.default.removeItem(atPath: imagePath)
-        }
-        profiles[index].imagePath = nil
         try save(profiles)
     }
 
     static func delete(_ email: String) throws {
         let key = email.lowercased()
         var profiles = Array(loadAll().values)
-        if let imagePath = profiles.first(where: { $0.email == key })?.imagePath {
-            try? FileManager.default.removeItem(atPath: imagePath)
-        }
         profiles.removeAll { $0.email == key }
         try save(profiles)
     }
@@ -93,7 +78,12 @@ enum AccountProfileStore {
               let profiles = try? JSONDecoder().decode([AccountProfile].self, from: data) else {
             return [:]
         }
-        return Dictionary(uniqueKeysWithValues: profiles.map { ($0.email.lowercased(), $0) })
+        var result: [String: AccountProfile] = [:]
+        for profile in profiles {
+            let sanitized = sanitizedProfile(profile)
+            result[sanitized.email] = sanitized
+        }
+        return result
     }
 
     private static func save(_ profiles: [AccountProfile]) throws {
@@ -110,73 +100,30 @@ enum AccountProfileStore {
         return pieces.isEmpty ? "Apple Account" : pieces.joined(separator: " ")
     }
 
-    private static func persistImage(from source: URL, for email: String) throws -> URL {
-        let accessed = source.startAccessingSecurityScopedResource()
-        defer { if accessed { source.stopAccessingSecurityScopedResource() } }
-        guard let image = NSImage(contentsOf: source),
-              image.size.width > 0,
-              image.size.height > 0,
-              let png = normalizedProfilePNG(from: image) else {
-            throw SideloomError.message("The selected profile picture could not be read.")
-        }
+    private static func sanitizedProfile(_ profile: AccountProfile) -> AccountProfile {
+        let email = profile.email
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+            .lowercased()
+        let name = profile.displayName
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return AccountProfile(
+            email: String(email.prefix(254)),
+            displayName: name.isEmpty ? inferredName(from: email) : String(name.prefix(80))
+        )
+    }
 
-        let directory = try FileManager.default.url(
+    private static func removeLegacyProfilePictures() {
+        guard let directory = try? FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
-        )
-        .appending(path: "app.sideloom.native/Account Profiles", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let digest = SHA256.hash(data: Data(email.utf8)).map { String(format: "%02x", $0) }.joined()
-        let destination = directory.appending(path: "\(digest).png")
-        try png.write(to: destination, options: .atomic)
-        return destination
-    }
-
-    /// Stores a small, square copy rather than retaining an arbitrarily large source image.
-    /// This keeps account rows predictable and avoids decoding a multi-megapixel photo on
-    /// every redraw.
-    private static func normalizedProfilePNG(from image: NSImage) -> Data? {
-        let pixels = 512
-        guard let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: pixels,
-            pixelsHigh: pixels,
-            bitsPerSample: 8,
-            samplesPerPixel: 4,
-            hasAlpha: true,
-            isPlanar: false,
-            colorSpaceName: .deviceRGB,
-            bytesPerRow: 0,
-            bitsPerPixel: 0
-        ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
-
-        let width = image.size.width
-        let height = image.size.height
-        let side = min(width, height)
-        let source = NSRect(
-            x: (width - side) / 2,
-            y: (height - side) / 2,
-            width: side,
-            height: side
-        )
-        let destination = NSRect(x: 0, y: 0, width: pixels, height: pixels)
-
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-        context.imageInterpolation = .high
-        NSColor.clear.setFill()
-        destination.fill()
-        image.draw(
-            in: destination,
-            from: source,
-            operation: .copy,
-            fraction: 1,
-            respectFlipped: false,
-            hints: [.interpolation: NSImageInterpolation.high]
-        )
-        NSGraphicsContext.restoreGraphicsState()
-        return bitmap.representation(using: .png, properties: [:])
+        ) else { return }
+        let legacyDirectory = directory
+            .appending(path: "app.sideloom.native/Account Profiles", directoryHint: .isDirectory)
+        try? FileManager.default.removeItem(at: legacyDirectory)
     }
 }

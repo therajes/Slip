@@ -1,5 +1,68 @@
 import AppKit
+import Darwin
 import Foundation
+
+@_silgen_name("flock")
+private func slipFlock(_ descriptor: Int32, _ operation: Int32) -> Int32
+
+final class DeviceOperationLease: @unchecked Sendable {
+    private let stateLock = NSLock()
+    private var descriptor: Int32?
+
+    init(descriptor: Int32) {
+        self.descriptor = descriptor
+    }
+
+    func release() {
+        stateLock.lock()
+        guard let descriptor else {
+            stateLock.unlock()
+            return
+        }
+        self.descriptor = nil
+        stateLock.unlock()
+        _ = slipFlock(descriptor, LOCK_UN)
+        Darwin.close(descriptor)
+    }
+
+    deinit { release() }
+}
+
+enum DeviceOperationCoordinator {
+    static func acquire() throws -> DeviceOperationLease {
+        let base = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ).appending(path: "app.sideloom.native", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(
+            at: base,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: base.path
+        )
+        let path = base.appending(path: "device-operation.lock").path
+        let descriptor = Darwin.open(path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0 else {
+            throw SideloomError.message("Unable to create the iPhone operation lock.")
+        }
+        guard Darwin.fchmod(descriptor, S_IRUSR | S_IWUSR) == 0 else {
+            Darwin.close(descriptor)
+            throw SideloomError.message("Unable to protect the iPhone operation lock.")
+        }
+        guard slipFlock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+            Darwin.close(descriptor)
+            throw SideloomError.message(
+                "Another Slip install, refresh, or uninstall operation is already running."
+            )
+        }
+        return DeviceOperationLease(descriptor: descriptor)
+    }
+}
 
 struct ManagedInstallation: Codable, Hashable, Identifiable {
     let id: String
@@ -23,6 +86,7 @@ struct ManagedInstallation: Codable, Hashable, Identifiable {
 @MainActor
 enum AutoRefreshStore {
     private static let fileName = "managed-installations.json"
+    private static let lockFileName = "managed-installations.lock"
 
     static var fileURL: URL {
         let base = try? FileManager.default.url(
@@ -37,56 +101,159 @@ enum AutoRefreshStore {
     }
 
     static func load() -> [ManagedInstallation] {
-        guard let data = try? Data(contentsOf: fileURL) else { return [] }
-        return (try? JSONDecoder().decode([ManagedInstallation].self, from: data)) ?? []
+        (try? withLock(exclusive: false) { try loadUnlocked(strict: false) }) ?? []
     }
 
     static func save(_ installations: [ManagedInstallation]) throws {
+        try withLock(exclusive: true) {
+            try saveUnlocked(installations)
+        }
+    }
+
+    @discardableResult
+    static func mutate(
+        _ changes: (inout [ManagedInstallation]) throws -> Void
+    ) throws -> [ManagedInstallation] {
+        try withLock(exclusive: true) {
+            var installations = try loadUnlocked(strict: true)
+            try changes(&installations)
+            try saveUnlocked(installations)
+            return installations
+        }
+    }
+
+    static func updateRuntime(_ entry: ManagedInstallation) throws {
+        try mutate { installations in
+            guard let index = installations.firstIndex(where: { $0.id == entry.id }) else {
+                return
+            }
+            let enabled = installations[index].enabled
+            var merged = entry
+            merged.enabled = enabled
+            if !enabled && merged.status != "Needs attention" {
+                merged.status = "Paused"
+            } else if enabled && merged.status == "Paused" {
+                merged.status = "Scheduled"
+            }
+            installations[index] = merged
+        }
+    }
+
+    private static func loadUnlocked(strict: Bool) throws -> [ManagedInstallation] {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: fileURL.path
+        )
+        let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+        if let size = attributes[.size] as? NSNumber, size.int64Value > 16 * 1_024 * 1_024 {
+            throw SideloomError.message("The Auto Refresh schedule is unexpectedly large.")
+        }
+        do {
+            let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+            return try JSONDecoder().decode([ManagedInstallation].self, from: data)
+        } catch {
+            if strict {
+                throw SideloomError.message(
+                    "The Auto Refresh schedule is damaged. Restore or remove managed-installations.json before changing schedules."
+                )
+            }
+            return []
+        }
+    }
+
+    private static func saveUnlocked(_ installations: [ManagedInstallation]) throws {
         let directory = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(
             at: directory,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: directory.path
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(installations).write(to: fileURL, options: [.atomic])
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: fileURL.path
+        )
+    }
+
+    private static func withLock<T>(
+        exclusive: Bool,
+        _ operation: () throws -> T
+    ) throws -> T {
+        let directory = fileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: directory.path
+        )
+        let lockURL = directory.appending(path: lockFileName)
+        let descriptor = Darwin.open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0 else {
+            throw SideloomError.message("Unable to lock the Auto Refresh schedule.")
+        }
+        guard Darwin.fchmod(descriptor, S_IRUSR | S_IWUSR) == 0 else {
+            Darwin.close(descriptor)
+            throw SideloomError.message("Unable to protect the Auto Refresh schedule lock.")
+        }
+        defer { Darwin.close(descriptor) }
+        guard slipFlock(descriptor, exclusive ? LOCK_EX : LOCK_SH) == 0 else {
+            throw SideloomError.message("Unable to coordinate the Auto Refresh schedule.")
+        }
+        defer { _ = slipFlock(descriptor, LOCK_UN) }
+        return try operation()
     }
 
     static func recordSuccessfulInstall(
         ipa: IpaInfo,
-        request: InstallRequest,
+        account: String,
+        device: DeviceInfo,
+        options: IpaInstallOptions,
         enabled: Bool
     ) throws -> ManagedInstallation {
         let now = Date()
-        let effectiveBundleID = request.options.bundleId ?? ipa.bundleId
-        let key = "\(request.device.udid)|\(effectiveBundleID)"
-        var installations = load()
-        let existingID = installations.first(where: {
-            $0.deviceUDID == request.device.udid && $0.bundleId == effectiveBundleID
-        })?.id
-        let entry = ManagedInstallation(
-            id: existingID ?? key,
-            appName: request.options.displayName ?? ipa.appName,
-            bundleId: effectiveBundleID,
-            account: request.email,
-            deviceUDID: request.device.udid,
-            deviceName: request.device.name,
-            options: request.options,
-            installedAt: now,
-            expiresAt: now.addingTimeInterval(7 * 24 * 60 * 60),
-            nextRefreshAt: now.addingTimeInterval(6 * 24 * 60 * 60),
-            lastAttemptAt: now,
-            enabled: enabled,
-            status: enabled ? "Scheduled" : "Paused",
-            lastError: nil
-        )
-        installations.removeAll {
-            $0.deviceUDID == request.device.udid && $0.bundleId == effectiveBundleID
+        let effectiveBundleID = options.bundleId ?? ipa.bundleId
+        let key = "\(device.udid)|\(effectiveBundleID)"
+        var savedEntry: ManagedInstallation?
+        try mutate { installations in
+            let existingID = installations.first(where: {
+                $0.deviceUDID == device.udid && $0.bundleId == effectiveBundleID
+            })?.id
+            let entry = ManagedInstallation(
+                id: existingID ?? key,
+                appName: options.displayName ?? ipa.appName,
+                bundleId: effectiveBundleID,
+                account: account,
+                deviceUDID: device.udid,
+                deviceName: device.name,
+                options: options,
+                installedAt: now,
+                expiresAt: now.addingTimeInterval(7 * 24 * 60 * 60),
+                nextRefreshAt: now.addingTimeInterval(6 * 24 * 60 * 60),
+                lastAttemptAt: now,
+                enabled: enabled,
+                status: enabled ? "Scheduled" : "Paused",
+                lastError: nil
+            )
+            installations.removeAll {
+                $0.deviceUDID == device.udid && $0.bundleId == effectiveBundleID
+            }
+            installations.append(entry)
+            savedEntry = entry
         }
-        installations.append(entry)
-        try save(installations)
-        return entry
+        guard let savedEntry else {
+            throw SideloomError.message("Unable to save the Auto Refresh schedule.")
+        }
+        return savedEntry
     }
 }
 
@@ -102,7 +269,19 @@ enum AutoRefreshScheduler {
     }
 
     static var isInstalled: Bool {
-        FileManager.default.fileExists(atPath: launchAgentURL.path)
+        guard FileManager.default.fileExists(atPath: launchAgentURL.path) else { return false }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = ["print", "gui/\(getuid())/\(label)"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
     }
 
     static func installIfAppropriate() throws {
@@ -127,11 +306,32 @@ enum AutoRefreshScheduler {
             format: .xml,
             options: 0
         )
-        if (try? Data(contentsOf: launchAgentURL)) != data {
+        let configurationChanged = (try? Data(contentsOf: launchAgentURL)) != data
+        if configurationChanged {
             try data.write(to: launchAgentURL, options: [.atomic])
         }
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: launchAgentURL.path
+        )
 
         let target = "gui/\(getuid())"
+        if configurationChanged && isInstalled {
+            let unload = Process()
+            unload.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            unload.arguments = ["bootout", "\(target)/\(label)"]
+            unload.standardOutput = FileHandle.nullDevice
+            unload.standardError = FileHandle.nullDevice
+            try unload.run()
+            unload.waitUntilExit()
+            if unload.terminationStatus != 0 && isInstalled {
+                throw SideloomError.message(
+                    "macOS could not reload Slip's updated background refresh service."
+                )
+            }
+        } else if isInstalled {
+            return
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         process.arguments = ["bootstrap", target, launchAgentURL.path]
@@ -139,7 +339,11 @@ enum AutoRefreshScheduler {
         process.standardError = FileHandle.nullDevice
         try process.run()
         process.waitUntilExit()
-        // launchctl returns a non-zero status when this unchanged agent is already loaded.
+        // bootstrap returns a non-zero status when this unchanged agent is already loaded.
+        // Verify the service state instead of assuming every non-zero result is harmless.
+        guard isInstalled else {
+            throw SideloomError.message("macOS could not activate Slip's background refresh service.")
+        }
     }
 }
 
@@ -152,11 +356,15 @@ enum AutoRefreshWorker {
     }
 
     static func runDue(forceIDs: Set<String> = []) async -> Result {
+        guard let operationLease = try? DeviceOperationCoordinator.acquire() else {
+            return Result(attempted: 0, succeeded: 0, attentionNeeded: 0)
+        }
+        defer { operationLease.release() }
         var installations = AutoRefreshStore.load()
         let now = Date()
         let dueIndexes = installations.indices.filter { index in
             let item = installations[index]
-            return item.enabled && (forceIDs.contains(item.id) || item.nextRefreshAt <= now)
+            return forceIDs.contains(item.id) || (item.enabled && item.nextRefreshAt <= now)
         }
         guard !dueIndexes.isEmpty else {
             return Result(attempted: 0, succeeded: 0, attentionNeeded: 0)
@@ -171,7 +379,7 @@ enum AutoRefreshWorker {
             installations[index].lastAttemptAt = Date()
             installations[index].status = "Refreshing"
             installations[index].lastError = nil
-            try? AutoRefreshStore.save(installations)
+            try? AutoRefreshStore.updateRuntime(installations[index])
 
             let item = installations[index]
             guard FileManager.default.fileExists(atPath: item.ipaPath) else {
@@ -180,6 +388,7 @@ enum AutoRefreshWorker {
                     "IPA file is missing. Restore it to \(item.ipaPath) or install it again."
                 )
                 attentionNeeded += 1
+                try? AutoRefreshStore.updateRuntime(installations[index])
                 continue
             }
             guard let device = preferredDevice(for: item, among: devices) else {
@@ -187,6 +396,7 @@ enum AutoRefreshWorker {
                     &installations[index],
                     "iPhone is not reachable. Slip will retry over Wi‑Fi or USB."
                 )
+                try? AutoRefreshStore.updateRuntime(installations[index])
                 continue
             }
 
@@ -207,7 +417,7 @@ enum AutoRefreshWorker {
                     installations[index].installedAt = refreshedAt
                     installations[index].expiresAt = refreshedAt.addingTimeInterval(7 * 24 * 60 * 60)
                     installations[index].nextRefreshAt = refreshedAt.addingTimeInterval(6 * 24 * 60 * 60)
-                    installations[index].status = "Scheduled"
+                    installations[index].status = installations[index].enabled ? "Scheduled" : "Paused"
                     installations[index].lastError = nil
                     succeeded += 1
                 case .attention(let message):
@@ -220,10 +430,8 @@ enum AutoRefreshWorker {
                 markAttention(&installations[index], error.localizedDescription)
                 attentionNeeded += 1
             }
-            try? AutoRefreshStore.save(installations)
+            try? AutoRefreshStore.updateRuntime(installations[index])
         }
-
-        try? AutoRefreshStore.save(installations)
         if succeeded > 0 {
             postNotification(
                 title: "Slip Auto Refresh",
@@ -264,6 +472,9 @@ enum AutoRefreshWorker {
                 try? core.submitCertificates(nil)
                 outcome = .attention("Apple requires a certificate decision. Open Slip and refresh this app manually.")
             case "error":
+                if case .attention = outcome {
+                    break
+                }
                 outcome = .failed(event.message ?? "Installation failed. Slip will retry.")
             default:
                 break
@@ -309,7 +520,9 @@ enum AutoRefreshWorker {
 
     private static func postNotification(title: String, message: String) {
         let escape: (String) -> String = {
-            $0.replacingOccurrences(of: "\\", with: "\\\\")
+            $0.components(separatedBy: .controlCharacters)
+                .joined(separator: " ")
+                .replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"", with: "\\\"")
         }
         let process = Process()

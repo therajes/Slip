@@ -22,7 +22,6 @@ fi
 
 "$CARGO_BIN" build \
     --manifest-path "$CORE_DIR/Cargo.toml" \
-    --no-default-features \
     --release \
     --bin sideloom-core
 
@@ -30,7 +29,7 @@ swift build --package-path "$NATIVE_DIR" -c release --arch arm64
 SWIFT_BIN_DIR=$(swift build --package-path "$NATIVE_DIR" -c release --arch arm64 --show-bin-path)
 
 if [[ -d "$APP_DIR" ]]; then
-    mv "$APP_DIR" "$OUTPUT_DIR/Slip.previous-$(date +%s).app"
+    /bin/rm -rf "$APP_DIR"
 fi
 
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"

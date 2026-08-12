@@ -79,7 +79,9 @@ struct CertificateInfo: Codable, Hashable, Identifiable {
     let serialNumber: String?
     let machineName: String?
 
-    var id: String { serialNumber ?? UUID().uuidString }
+    var id: String {
+        serialNumber ?? [name, machineName].compactMap { $0 }.joined(separator: "|")
+    }
 }
 
 struct InstalledAppInfo: Codable, Hashable, Identifiable {
@@ -91,6 +93,21 @@ struct InstalledAppInfo: Codable, Hashable, Identifiable {
     let iconData: String?
 
     var id: String { bundleId }
+}
+
+struct DeveloperAppIDInfo: Codable, Hashable, Identifiable {
+    let appIdId: String
+    let identifier: String
+    let name: String
+    let expirationDate: String?
+    let teamName: String?
+
+    var id: String { "\(teamName ?? "")|\(appIdId)" }
+
+    var resetDate: Date? {
+        guard let expirationDate else { return nil }
+        return try? Date(expirationDate, strategy: .iso8601)
+    }
 }
 
 struct CoreEvent: Codable {
@@ -106,6 +123,16 @@ struct CoreEvent: Codable {
     let bundleIds: [String]?
     let email: String?
     let accountName: String?
+    let appIds: [DeveloperAppIDInfo]?
+    let maxQuantity: UInt64?
+    let availableQuantity: Int64?
+}
+
+struct AppleAccountRequest: Codable {
+    let email: String
+    let password: String
+    let anisetteServer: String
+    let storagePath: String
 }
 
 struct UninstallAppsRequest: Codable {

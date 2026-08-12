@@ -21,7 +21,8 @@ struct DeviceAppsView: View {
 
     private var selectedRecipeIDs: Set<String> {
         Set(model.managedInstallations.compactMap { installation in
-            selectedBundleIDs.contains(installation.bundleId) ? installation.id : nil
+            selectedBundleIDs.contains(installation.bundleId) &&
+                installation.deviceUDID == model.selectedDevice?.udid ? installation.id : nil
         })
     }
 
@@ -150,8 +151,6 @@ struct DeviceAppsView: View {
         } else {
             List(filteredApps) { app in
                 appRow(app)
-                    .contentShape(Rectangle())
-                    .onTapGesture { toggle(app.bundleId) }
                     .listRowBackground(Color.clear)
             }
             .listStyle(.inset)
@@ -167,35 +166,38 @@ struct DeviceAppsView: View {
 
     private func appRow(_ app: InstalledAppInfo) -> some View {
         let selected = selectedBundleIDs.contains(app.bundleId)
-        return HStack(spacing: 14) {
-            Button { toggle(app.bundleId) } label: {
+        return Button { toggle(app.bundleId) } label: {
+            HStack(spacing: 14) {
                 Image(systemName: selected ? "checkmark.square.fill" : "square")
                     .font(.title3)
                     .slipDimensionalSymbol(strength: 0.72)
                     .foregroundStyle(selected ? Color.accentColor : .secondary)
                     .contentTransition(.symbolEffect(.replace))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(selected ? "Deselect \(app.name)" : "Select \(app.name)")
-            InstalledAppIcon(app: app, isManaged: managedRecipe(for: app) != nil)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(app.name.isEmpty ? app.bundleId : app.name).fontWeight(.semibold)
-                Text(app.bundleId).font(.caption.monospaced()).foregroundStyle(.secondary)
-            }
-            Spacer()
-            if !app.version.isEmpty {
-                Text("\(app.version) (\(app.buildVersion))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if let recipe = managedRecipe(for: app) {
-                Text(recipe.status)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .glassEffectIfAvailable(tint: .green.opacity(0.15))
+                InstalledAppIcon(app: app, isManaged: managedRecipe(for: app) != nil)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(app.name.isEmpty ? app.bundleId : app.name).fontWeight(.semibold)
+                    Text(app.bundleId).font(.caption.monospaced()).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !app.version.isEmpty {
+                    Text("\(app.version) (\(app.buildVersion))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 170)
+                }
+                if let recipe = managedRecipe(for: app) {
+                    Text(recipe.status)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .glassEffectIfAvailable(tint: .green.opacity(0.15))
+                }
             }
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(selected ? "Deselect \(app.name)" : "Select \(app.name)")
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(selected ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -207,7 +209,9 @@ struct DeviceAppsView: View {
     }
 
     private func managedRecipe(for app: InstalledAppInfo) -> ManagedInstallation? {
-        model.managedInstallations.first { $0.bundleId == app.bundleId }
+        model.managedInstallations.first {
+            $0.bundleId == app.bundleId && $0.deviceUDID == model.selectedDevice?.udid
+        }
     }
 }
 
