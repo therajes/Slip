@@ -43,6 +43,59 @@ private final class InstallStreamState: @unchecked Sendable {
     }
 }
 
+private final class ProcessOutputBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    private var truncated = false
+    private let maximumBytes: Int
+
+    init(maximumBytes: Int = 128 * 1_024 * 1_024) {
+        self.maximumBytes = maximumBytes
+    }
+
+    func append(_ chunk: Data) {
+        guard !chunk.isEmpty else { return }
+        lock.lock()
+        let remaining = max(0, maximumBytes - data.count)
+        if remaining > 0 {
+            data.append(chunk.prefix(remaining))
+        }
+        if chunk.count > remaining {
+            truncated = true
+        }
+        lock.unlock()
+    }
+
+    var wasTruncated: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return truncated
+    }
+
+    func finish() -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        defer { data.removeAll(keepingCapacity: false) }
+        return data
+    }
+}
+
+private func coreFailureMessage(stdout: Data, stderr: Data) -> String {
+    for data in [stdout, stderr] {
+        let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !text.isEmpty else { continue }
+        if let lastLine = text.split(separator: "\n").last,
+           let event = try? JSONDecoder().decode(CoreEvent.self, from: Data(lastLine.utf8)),
+           let detail = event.message,
+           !detail.isEmpty {
+            return detail
+        }
+        return text
+    }
+    return "Slip core failed without an error message"
+}
+
 final class CoreClient: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
@@ -53,7 +106,18 @@ final class CoreClient: @unchecked Sendable {
         if let bundled = Bundle.main.url(forResource: "sideloom-core", withExtension: nil) {
             return bundled
         }
-        return URL(fileURLWithPath: "../src-tauri/target/release/sideloom-core")
+        #if DEBUG
+        let source = URL(fileURLWithPath: #filePath)
+        return source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "src-tauri/target/release/sideloom-core")
+        #else
+        return Bundle.main.bundleURL
+            .appending(path: "Contents/Resources/sideloom-core")
+        #endif
     }
 
     func run(_ arguments: [String]) async throws -> CoreEvent {
@@ -65,19 +129,28 @@ final class CoreClient: @unchecked Sendable {
             process.arguments = arguments
             process.standardOutput = output
             process.standardError = errors
+            let outputBuffer = ProcessOutputBuffer()
+            let errorBuffer = ProcessOutputBuffer(maximumBytes: 2 * 1_024 * 1_024)
+            output.fileHandleForReading.readabilityHandler = { handle in
+                outputBuffer.append(handle.availableData)
+            }
+            errors.fileHandleForReading.readabilityHandler = { handle in
+                errorBuffer.append(handle.availableData)
+            }
             try process.run()
             process.waitUntilExit()
-            let data = output.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errors.fileHandleForReading.readDataToEndOfFile()
+            output.fileHandleForReading.readabilityHandler = nil
+            errors.fileHandleForReading.readabilityHandler = nil
+            outputBuffer.append(output.fileHandleForReading.readDataToEndOfFile())
+            errorBuffer.append(errors.fileHandleForReading.readDataToEndOfFile())
+            let outputWasTruncated = outputBuffer.wasTruncated
+            let data = outputBuffer.finish()
+            let errorData = errorBuffer.finish()
             guard process.terminationStatus == 0 else {
-                let message = String(data: data, encoding: .utf8)
-                    ?? String(data: errorData, encoding: .utf8)
-                    ?? "Slip core failed"
-                if let event = try? JSONDecoder().decode(CoreEvent.self, from: Data(message.utf8)),
-                   let detail = event.message {
-                    throw SideloomError.message(detail)
-                }
-                throw SideloomError.message(message.trimmingCharacters(in: .whitespacesAndNewlines))
+                throw SideloomError.message(coreFailureMessage(stdout: data, stderr: errorData))
+            }
+            guard !outputWasTruncated else {
+                throw SideloomError.message("Slip received more app data than it could safely display")
             }
             guard let line = String(data: data, encoding: .utf8)?
                 .split(separator: "\n").last else {
@@ -99,21 +172,30 @@ final class CoreClient: @unchecked Sendable {
             process.standardOutput = output
             process.standardError = errors
             process.standardInput = stdin
+            let outputBuffer = ProcessOutputBuffer()
+            let errorBuffer = ProcessOutputBuffer(maximumBytes: 2 * 1_024 * 1_024)
+            output.fileHandleForReading.readabilityHandler = { handle in
+                outputBuffer.append(handle.availableData)
+            }
+            errors.fileHandleForReading.readabilityHandler = { handle in
+                errorBuffer.append(handle.availableData)
+            }
             try process.run()
             try stdin.fileHandleForWriting.write(contentsOf: encoded)
             try stdin.fileHandleForWriting.close()
             process.waitUntilExit()
-            let data = output.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errors.fileHandleForReading.readDataToEndOfFile()
+            output.fileHandleForReading.readabilityHandler = nil
+            errors.fileHandleForReading.readabilityHandler = nil
+            outputBuffer.append(output.fileHandleForReading.readDataToEndOfFile())
+            errorBuffer.append(errors.fileHandleForReading.readDataToEndOfFile())
+            let outputWasTruncated = outputBuffer.wasTruncated
+            let data = outputBuffer.finish()
+            let errorData = errorBuffer.finish()
             guard process.terminationStatus == 0 else {
-                let message = String(data: data, encoding: .utf8)
-                    ?? String(data: errorData, encoding: .utf8)
-                    ?? "Slip core failed"
-                if let event = try? JSONDecoder().decode(CoreEvent.self, from: Data(message.utf8)),
-                   let detail = event.message {
-                    throw SideloomError.message(detail)
-                }
-                throw SideloomError.message(message.trimmingCharacters(in: .whitespacesAndNewlines))
+                throw SideloomError.message(coreFailureMessage(stdout: data, stderr: errorData))
+            }
+            guard !outputWasTruncated else {
+                throw SideloomError.message("Slip received more app data than it could safely display")
             }
             guard let line = String(data: data, encoding: .utf8)?
                 .split(separator: "\n").last else {
@@ -123,13 +205,17 @@ final class CoreClient: @unchecked Sendable {
         }.value
     }
 
-    func installStream(request: InstallRequest) throws -> AsyncThrowingStream<CoreEvent, Error> {
+    private func interactiveStream<Request: Encodable>(
+        arguments: [String],
+        request: Request
+    ) throws -> AsyncThrowingStream<CoreEvent, Error> {
+        var encodedRequest = try JSONEncoder().encode(request) + Data([0x0A])
         let process = Process()
         let stdout = Pipe()
         let stderr = Pipe()
         let stdin = Pipe()
         process.executableURL = coreURL
-        process.arguments = ["install"]
+        process.arguments = arguments
         process.standardOutput = stdout
         process.standardError = stderr
         process.standardInput = stdin
@@ -142,6 +228,7 @@ final class CoreClient: @unchecked Sendable {
         return AsyncThrowingStream { continuation in
             let buffer = LineBuffer()
             let state = InstallStreamState()
+            let errorBuffer = ProcessOutputBuffer(maximumBytes: 2 * 1_024 * 1_024)
             let emitLines: @Sendable ([Data]) -> Void = { lines in
                 for line in lines {
                     if let event = try? JSONDecoder().decode(CoreEvent.self, from: line) {
@@ -155,20 +242,25 @@ final class CoreClient: @unchecked Sendable {
                 guard !chunk.isEmpty else { return }
                 emitLines(buffer.append(chunk))
             }
+            stderr.fileHandleForReading.readabilityHandler = { handle in
+                errorBuffer.append(handle.availableData)
+            }
             process.terminationHandler = { [weak self] process in
                 stdout.fileHandleForReading.readabilityHandler = nil
+                stderr.fileHandleForReading.readabilityHandler = nil
                 emitLines(buffer.append(stdout.fileHandleForReading.readDataToEndOfFile()))
                 if let finalLine = buffer.finish() {
                     emitLines([finalLine])
                 }
-                let errorText = String(
-                    data: stderr.fileHandleForReading.readDataToEndOfFile(),
-                    encoding: .utf8
-                )?.trimmingCharacters(in: .whitespacesAndNewlines)
+                errorBuffer.append(stderr.fileHandleForReading.readDataToEndOfFile())
+                let errorText = String(data: errorBuffer.finish(), encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
                 self?.lock.lock()
-                self?.process = nil
-                self?.inputPipe = nil
-                self?.input = nil
+                if self?.process === process {
+                    self?.process = nil
+                    self?.inputPipe = nil
+                    self?.input = nil
+                }
                 self?.lock.unlock()
                 if process.terminationStatus == 0 {
                     continuation.finish()
@@ -181,24 +273,51 @@ final class CoreClient: @unchecked Sendable {
                 }
             }
             continuation.onTermination = { [weak self] _ in
-                self?.cancel()
+                self?.cancel(process: process)
             }
             do {
                 try process.run()
-                try self.send(request)
+                try self.sendEncoded(encodedRequest)
+                encodedRequest.resetBytes(in: 0..<encodedRequest.count)
+                encodedRequest.removeAll(keepingCapacity: false)
             } catch {
+                encodedRequest.resetBytes(in: 0..<encodedRequest.count)
+                encodedRequest.removeAll(keepingCapacity: false)
+                stdout.fileHandleForReading.readabilityHandler = nil
+                stderr.fileHandleForReading.readabilityHandler = nil
+                try? stdin.fileHandleForWriting.close()
+                if process.isRunning { process.terminate() }
+                self.lock.lock()
+                if self.process === process {
+                    self.process = nil
+                    self.inputPipe = nil
+                    self.input = nil
+                }
+                self.lock.unlock()
                 continuation.finish(throwing: error)
             }
         }
     }
 
+    func installStream(request: InstallRequest) throws -> AsyncThrowingStream<CoreEvent, Error> {
+        try interactiveStream(arguments: ["install"], request: request)
+    }
+
+    func appIDsStream(request: AppleAccountRequest) throws -> AsyncThrowingStream<CoreEvent, Error> {
+        try interactiveStream(arguments: ["app-ids"], request: request)
+    }
+
     func send<T: Encodable>(_ response: T) throws {
         let data = try JSONEncoder().encode(response) + Data([0x0A])
+        try sendEncoded(data)
+    }
+
+    private func sendEncoded(_ data: Data) throws {
         lock.lock()
         let handle = input
         lock.unlock()
         guard let handle else {
-            throw SideloomError.message("No installation is running")
+            throw SideloomError.message("No interactive Apple request is running")
         }
         try handle.write(contentsOf: data)
     }
@@ -210,6 +329,18 @@ final class CoreClient: @unchecked Sendable {
         lock.unlock()
         try? input?.close()
         if process?.isRunning == true { process?.terminate() }
+    }
+
+    private func cancel(process expectedProcess: Process) {
+        lock.lock()
+        guard process === expectedProcess else {
+            lock.unlock()
+            return
+        }
+        let input = self.input
+        lock.unlock()
+        try? input?.close()
+        if expectedProcess.isRunning { expectedProcess.terminate() }
     }
 }
 

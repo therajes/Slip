@@ -2,7 +2,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -15,8 +15,10 @@ use isideload::{
     anisette::remote_v3::{DEFAULT_ANISETTE_V3_URL, RemoteV3AnisetteProvider},
     auth::apple_account::{AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
     dev::{
+        app_ids::AppIdsApi,
         certificates::DevelopmentCertificate,
         developer_session::{DeveloperSession, DevicesApi},
+        teams::TeamsApi,
     },
     sideload::{SideloaderBuilder, builder::MaxCertsBehavior},
     util::{device::IdeviceInfo, fs_storage::FsStorage, storage::SideloadingStorage},
@@ -24,6 +26,7 @@ use isideload::{
 use rootcause::prelude::*;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use zeroize::Zeroize;
 
 use crate::{
     device::{DeviceInfo, enable_wifi_debugging, get_provider, list_devices},
@@ -61,6 +64,15 @@ struct UninstallAppsRequest {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct AccountRequest {
+    email: String,
+    password: String,
+    anisette_server: String,
+    storage_path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PromptResponse {
     code: Option<String>,
     serials: Option<Vec<String>>,
@@ -86,6 +98,20 @@ fn emit_progress(stage: &str, value: f32, message: &str) {
         "value": value.clamp(0.0, 1.0),
         "message": message,
     }));
+}
+
+fn bounded_single_line(value: &str, maximum_characters: usize) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .take(maximum_characters)
+        .collect()
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(input: &Input) -> Result<T, AppError> {
@@ -119,7 +145,7 @@ fn storage(path: &str) -> Result<Box<dyn SideloadingStorage>, AppError> {
     Ok(Box::new(FsStorage::new(path)))
 }
 
-async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> {
+async fn install(mut request: InstallRequest, input: Input) -> Result<(), AppError> {
     emit_progress("account", 0.0, "Authenticating with Apple");
     let tfa_input = input.clone();
     let tfa_callback = move |params: TwoFactorCallbackParams| {
@@ -191,10 +217,11 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             provisioning_errors.join(" | ")
         ))
     })?;
-    account
+    let login_result = account
         .login(&request.password, Box::new(tfa_callback))
-        .await
-        .map_err(AppError::from)?;
+        .await;
+    request.password.zeroize();
+    login_result.map_err(AppError::from)?;
     if let Ok((first_name, last_name)) = account.get_name() {
         let account_name = format!("{first_name} {last_name}").trim().to_string();
         if !account_name.is_empty() {
@@ -329,26 +356,39 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
 
 async fn list_installed_apps(device: &DeviceInfo) -> Result<Vec<Value>, AppError> {
     let provider = get_provider(device).await?;
-    let mut client = InstallationProxyClient::connect(&provider)
-        .await
-        .map_err(|error| {
-            AppError::DeviceComsWithMessage(
-                "Unable to read installed iPhone apps".into(),
-                error.to_string(),
-            )
-        })?;
-    let apps = client.get_apps(Some("User"), None).await.map_err(|error| {
+    let mut client = tokio::time::timeout(
+        Duration::from_secs(15),
+        InstallationProxyClient::connect(&provider),
+    )
+    .await
+    .map_err(|_| AppError::DeviceComs("Timed out opening iPhone app management".into()))?
+    .map_err(|error| {
         AppError::DeviceComsWithMessage(
-            "Unable to list installed iPhone apps".into(),
+            "Unable to read installed iPhone apps".into(),
             error.to_string(),
         )
     })?;
+    let apps = tokio::time::timeout(Duration::from_secs(30), client.get_apps(Some("User"), None))
+        .await
+        .map_err(|_| AppError::DeviceComs("Timed out listing installed iPhone apps".into()))?
+        .map_err(|error| {
+            AppError::DeviceComsWithMessage(
+                "Unable to list installed iPhone apps".into(),
+                error.to_string(),
+            )
+        })?;
     drop(client);
 
     // SpringBoard exposes the exact icon iOS is displaying. Keep this optional:
     // an inventory is still useful even if an individual app or iOS version refuses
     // icon access.
-    let mut springboard = SpringBoardServicesClient::connect(&provider).await.ok();
+    let mut springboard = tokio::time::timeout(
+        Duration::from_secs(10),
+        SpringBoardServicesClient::connect(&provider),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok);
     let mut result = Vec::with_capacity(apps.len());
     for (bundle_id, value) in apps {
         let info = value.as_dictionary();
@@ -363,21 +403,38 @@ async fn list_installed_apps(device: &DeviceInfo) -> Result<Vec<Value>, AppError
         } else {
             display_name
         };
-        let icon_data = if let Some(client) = springboard.as_mut() {
-            client
-                .get_icon_pngdata(bundle_id.clone())
-                .await
-                .ok()
-                .map(|data| STANDARD.encode(data))
+        let icon_result = if let Some(client) = springboard.as_mut() {
+            Some(
+                tokio::time::timeout(
+                    Duration::from_secs(3),
+                    client.get_icon_pngdata(bundle_id.clone()),
+                )
+                .await,
+            )
         } else {
             None
         };
+        let mut icon_service_timed_out = false;
+        let icon_data = match icon_result {
+            Some(Ok(Ok(data))) if data.len() <= 512 * 1_024 => Some(STANDARD.encode(data)),
+            Some(Err(_)) => {
+                icon_service_timed_out = true;
+                None
+            }
+            _ => None,
+        };
+        if icon_service_timed_out {
+            // A wedged SpringBoard service should not impose a timeout for every
+            // remaining app. The inventory stays usable with placeholder artwork.
+            springboard = None;
+        }
+        let safe_bundle_id = bounded_single_line(&bundle_id, 255);
         result.push(json!({
-            "bundleId": bundle_id,
-            "name": name,
-            "version": string("CFBundleShortVersionString"),
-            "buildVersion": string("CFBundleVersion"),
-            "applicationType": string("ApplicationType"),
+            "bundleId": safe_bundle_id,
+            "name": bounded_single_line(name, 128),
+            "version": bounded_single_line(string("CFBundleShortVersionString"), 64),
+            "buildVersion": bounded_single_line(string("CFBundleVersion"), 64),
+            "applicationType": bounded_single_line(string("ApplicationType"), 64),
             "iconData": icon_data,
         }));
     }
@@ -399,20 +456,30 @@ async fn uninstall_apps(
         ));
     }
     let provider = get_provider(&request.device).await?;
-    let mut client = InstallationProxyClient::connect(&provider)
-        .await
-        .map_err(|error| {
-            AppError::DeviceComsWithMessage(
-                "Unable to open iPhone app management".into(),
-                error.to_string(),
-            )
-        })?;
+    let mut client = tokio::time::timeout(
+        Duration::from_secs(15),
+        InstallationProxyClient::connect(&provider),
+    )
+    .await
+    .map_err(|_| AppError::DeviceComs("Timed out opening iPhone app management".into()))?
+    .map_err(|error| {
+        AppError::DeviceComsWithMessage(
+            "Unable to open iPhone app management".into(),
+            error.to_string(),
+        )
+    })?;
     let mut removed = Vec::new();
     let mut errors = Vec::new();
     for bundle_id in request.bundle_ids {
-        match client.uninstall(bundle_id.clone(), None).await {
-            Ok(()) => removed.push(bundle_id),
-            Err(error) => errors.push(format!("{bundle_id}: {error}")),
+        match tokio::time::timeout(
+            Duration::from_secs(60),
+            client.uninstall(bundle_id.clone(), None),
+        )
+        .await
+        {
+            Ok(Ok(())) => removed.push(bundle_id),
+            Ok(Err(error)) => errors.push(format!("{bundle_id}: {error}")),
+            Err(_) => errors.push(format!("{bundle_id}: uninstall timed out")),
         }
     }
     if removed.is_empty() && !errors.is_empty() {
@@ -422,6 +489,152 @@ async fn uninstall_apps(
         ));
     }
     Ok((removed, errors))
+}
+
+async fn list_active_app_ids(mut request: AccountRequest, input: Input) -> Result<(), AppError> {
+    let tfa_input = input.clone();
+    let tfa_callback = move |params: TwoFactorCallbackParams| {
+        let tfa_input = tfa_input.clone();
+        async move {
+            emit(json!({ "type": "twoFactorRequired", "details": params }));
+            let response: PromptResponse = read_json(&tfa_input).map_err(|error| report!(error))?;
+            if response.cancel.unwrap_or(false) {
+                return Ok(TwoFactorCallbackResponse::Abort);
+            }
+            let code = response
+                .code
+                .filter(|code| !code.trim().is_empty())
+                .ok_or_else(|| report!("A two-factor code is required"))?;
+            Ok(TwoFactorCallbackResponse::SubmitCode(code))
+        }
+        .boxed()
+    };
+
+    let anisette_url = if request.anisette_server.starts_with("http") {
+        request.anisette_server.clone()
+    } else {
+        format!("https://{}", request.anisette_server)
+    };
+    let mut anisette_urls = vec![anisette_url];
+    if !anisette_urls
+        .iter()
+        .any(|url| url == DEFAULT_ANISETTE_V3_URL)
+    {
+        anisette_urls.push(DEFAULT_ANISETTE_V3_URL.into());
+    }
+
+    let email = request.email.to_lowercase();
+    let mut account = None;
+    let mut errors = Vec::new();
+    for url in anisette_urls {
+        match provisioned_account(&email, &url, &request.storage_path).await {
+            Ok(candidate) => {
+                account = Some(candidate);
+                break;
+            }
+            Err(error) => errors.push(format!("{url}: {error}")),
+        }
+    }
+    let mut account = account.ok_or_else(|| {
+        AppError::Misc(format!(
+            "Apple authentication preparation failed: {}",
+            errors.join(" | ")
+        ))
+    })?;
+    let login_result = account
+        .login(&request.password, Box::new(tfa_callback))
+        .await;
+    request.password.zeroize();
+    login_result.map_err(AppError::from)?;
+
+    if let Ok((first_name, last_name)) = account.get_name() {
+        let account_name = format!("{first_name} {last_name}").trim().to_string();
+        if !account_name.is_empty() {
+            emit(json!({
+                "type": "accountProfile",
+                "email": email,
+                "accountName": account_name,
+            }));
+        }
+    }
+
+    let mut developer_session = DeveloperSession::from_account(&mut account)
+        .await
+        .map_err(AppError::from)?;
+    let teams = developer_session
+        .list_teams()
+        .await
+        .map_err(AppError::from)?;
+    if teams.is_empty() {
+        return Err(AppError::Misc(
+            "No Apple developer team is available".into(),
+        ));
+    }
+
+    let mut app_ids = Vec::new();
+    let mut maximums = Vec::new();
+    let mut available = Vec::new();
+    let mut loaded_team_names = Vec::new();
+    let mut team_errors = Vec::new();
+    for team in teams {
+        let team_name = team
+            .name
+            .clone()
+            .map(|name| bounded_single_line(&name, 128))
+            .unwrap_or_else(|| format!("Developer Team {}", team.team_id));
+        match developer_session.list_app_ids(&team, None).await {
+            Ok(response) => {
+                maximums.push(response.max_quantity);
+                available.push(response.available_quantity);
+                loaded_team_names.push(team_name.clone());
+                app_ids.extend(response.app_ids.into_iter().map(|app_id| {
+                    json!({
+                        "appIdId": bounded_single_line(&app_id.app_id_id, 255),
+                        "identifier": bounded_single_line(&app_id.identifier, 255),
+                        "name": bounded_single_line(&app_id.name, 128),
+                        "expirationDate": app_id.expiration_date.map(|date| date.to_xml_format()),
+                        "teamName": team_name,
+                    })
+                }));
+            }
+            Err(error) => team_errors.push(format!("{team_name}: {error}")),
+        }
+    }
+    if loaded_team_names.is_empty() {
+        return Err(AppError::Misc(format!(
+            "Apple App IDs could not be loaded: {}",
+            team_errors.join(" | ")
+        )));
+    }
+    let max_quantity = maximums
+        .iter()
+        .copied()
+        .collect::<Option<Vec<_>>>()
+        .map(|values| values.into_iter().sum::<u64>());
+    let available_quantity = available
+        .iter()
+        .copied()
+        .collect::<Option<Vec<_>>>()
+        .map(|values| values.into_iter().sum::<i64>());
+    app_ids.sort_by_key(|app_id| {
+        app_id
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_ascii_lowercase()
+    });
+    emit(json!({
+        "type": "appIds",
+        "appIds": app_ids,
+        "maxQuantity": max_quantity,
+        "availableQuantity": available_quantity,
+        "message": if loaded_team_names.len() == 1 {
+            loaded_team_names[0].clone()
+        } else {
+            format!("{} Developer Teams", loaded_team_names.len())
+        },
+    }));
+    Ok(())
 }
 
 async fn provisioned_account(
@@ -508,7 +721,9 @@ pub async fn run() -> Result<(), AppError> {
             let udid = arguments
                 .next()
                 .ok_or_else(|| AppError::Misc("Missing iPhone UDID".into()))?;
-            enable_wifi_debugging(&udid).await?;
+            tokio::time::timeout(Duration::from_secs(30), enable_wifi_debugging(&udid))
+                .await
+                .map_err(|_| AppError::DeviceComs("Timed out enabling the Wi-Fi connection".into()))??;
             emit(json!({
                 "type": "wifiEnabled",
                 "message": "Wi-Fi connection enabled. Keep the Mac and iPhone on the same network."
@@ -531,6 +746,11 @@ pub async fn run() -> Result<(), AppError> {
             let apps = list_installed_apps(&device).await?;
             emit(json!({ "type": "apps", "apps": apps }));
             Ok(())
+        }
+        Some("app-ids") => {
+            let input = Arc::new(Mutex::new(BufReader::new(std::io::stdin())));
+            let request: AccountRequest = read_json(&input)?;
+            list_active_app_ids(request, input).await
         }
         Some("uninstall") => {
             let input = Arc::new(Mutex::new(BufReader::new(std::io::stdin())));
@@ -606,7 +826,7 @@ pub async fn run() -> Result<(), AppError> {
             install(request, input).await
         }
         _ => Err(AppError::Misc(
-            "Usage: sideloom-core devices | inspect <ipa> | icon <ipa> <destination> | enable-wifi <udid> | apps | uninstall | export | network-check [url] | anisette-check [url] [storage] | install".into(),
+            "Usage: sideloom-core devices | inspect <ipa> | icon <ipa> <destination> | enable-wifi <udid> | apps | app-ids | uninstall | export | network-check [url] | anisette-check [url] [storage] | install".into(),
         )),
     }
 }

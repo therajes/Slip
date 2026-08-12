@@ -61,6 +61,17 @@ extension AppModel {
         guard let ipa else { return [] }
         var result: [SlipReadinessIssue] = []
 
+        let requestedName = customName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if requestedName.count > 128 || requestedName.contains(where: \.isNewline) {
+            result.append(.init(
+                id: "app-name",
+                title: "App name is too long or contains a line break",
+                detail: "Use a single-line Home Screen name of 128 characters or fewer.",
+                symbol: "textformat",
+                level: .blocking
+            ))
+        }
+
         if !isValidBundleID(effectiveBundleID) {
             result.append(.init(
                 id: "bundle-id",
@@ -113,6 +124,8 @@ extension AppModel {
                 result.append(.init(id: "empty-\(item.id)", title: "Info.plist key is empty", detail: "Enter a key or remove the row.", symbol: "list.bullet.rectangle", level: .blocking))
             } else if Self.protectedPlistKeys.contains(key) {
                 result.append(.init(id: "protected-\(item.id)", title: key + " is protected", detail: "Use Slip’s dedicated identity controls instead.", symbol: "lock.fill", level: .blocking))
+            } else if key.count > 256 || key.contains(where: \.isNewline) {
+                result.append(.init(id: "key-length-\(item.id)", title: "Info.plist key is invalid", detail: "Use a single-line key of 256 characters or fewer.", symbol: "text.badge.xmark", level: .blocking))
             }
 
             let value = item.value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -120,11 +133,14 @@ extension AppModel {
             switch item.valueType {
             case "Boolean": valid = value == "true" || value == "false"
             case "Integer": valid = Int64(value) != nil
-            case "Real": valid = Double(value) != nil
+            case "Real": valid = Double(value)?.isFinite == true
             default: valid = true
             }
             if !valid {
                 result.append(.init(id: "value-\(item.id)", title: "Invalid " + item.valueType.lowercased() + " for " + (key.isEmpty ? "plist key" : key), detail: "Correct the typed value before continuing.", symbol: "exclamationmark.circle", level: .blocking))
+            }
+            if item.value.utf8.count > 1_048_576 {
+                result.append(.init(id: "value-size-\(item.id)", title: "Info.plist value is too large", detail: "Top-level override values are limited to 1 MB.", symbol: "externaldrive.badge.exclamationmark", level: .blocking))
             }
         }
 
@@ -172,15 +188,19 @@ extension AppModel {
     }
 
     var canInstall: Bool {
-        !isInstalling && blockingInstallIssue == nil
+        !isInstalling && !isLoadingAppIDs && !isLoadingInstalledApps &&
+            !isUninstallingApps && !isEnablingWiFi && !isInspecting &&
+            !isDownloading && !isExporting && blockingInstallIssue == nil
     }
 
     var canExport: Bool {
-        ipa != nil && !customizationIssues.contains { $0.level == .blocking } && ipa?.encryptionStatus != "Encrypted"
+        ipa != nil && !isExporting && !isInstalling && !isInspecting &&
+            !isDownloading && !customizationIssues.contains { $0.level == .blocking } &&
+            ipa?.encryptionStatus != "Encrypted"
     }
 
     private func isValidBundleID(_ value: String) -> Bool {
-        !value.isEmpty && value.contains(".") && value.split(separator: ".", omittingEmptySubsequences: false).allSatisfy { component in
+        !value.isEmpty && value.utf8.count <= 255 && value.contains(".") && value.split(separator: ".", omittingEmptySubsequences: false).allSatisfy { component in
             !component.isEmpty && component.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
         }
     }
@@ -188,7 +208,9 @@ extension AppModel {
     private func versionComponents(_ value: String) -> [Int]? {
         let parts = value.split(separator: ".", omittingEmptySubsequences: false)
         guard (1...3).contains(parts.count), parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isNumber) }) else { return nil }
-        return parts.compactMap { Int($0) }
+        let components = parts.compactMap { Int($0) }
+        guard components.count == parts.count, components.allSatisfy({ $0 <= 999 }) else { return nil }
+        return components
     }
 
     private func compareVersions(_ left: String, _ right: String) -> ComparisonResult? {

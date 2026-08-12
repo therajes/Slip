@@ -1,0 +1,87 @@
+name: Slip Native
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-audit:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable 2026-08-11
+        with:
+          components: clippy,rustfmt
+
+      - name: Cache Rust builds
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-slip-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Rust formatting, tests, and lints
+        working-directory: src-tauri
+        run: |
+          cargo fmt --check
+          cargo test --locked --lib
+          cargo clippy --locked --lib --bin sideloom-core -- -D warnings
+
+      - name: Rust security advisories
+        working-directory: src-tauri
+        run: |
+          cargo install cargo-audit --locked
+          # rsa has no patched release. Slip only uses it for local Apple code signing;
+          # SECURITY.md records the scope and the upstream-removal condition.
+          cargo audit --ignore RUSTSEC-2023-0071
+
+      - name: Swift warnings-as-errors build
+        working-directory: native
+        run: swift build -Xswiftc -warnings-as-errors
+
+      - name: Build signed app bundle
+        run: native/build.sh
+
+      - name: Create and verify DMG
+        run: |
+          APP_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' native/Info.plist)
+          mkdir -p native/dist
+          native/create-dmg.sh native/build/Slip.app "native/dist/Slip-${APP_VERSION}.dmg"
+          shasum -a 256 "native/dist/Slip-${APP_VERSION}.dmg" > "native/dist/Slip-${APP_VERSION}.dmg.sha256"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+        with:
+          name: Slip-macOS-arm64
+          path: |
+            native/dist/Slip-*.dmg
+            native/dist/Slip-*.dmg.sha256
+
+  publish-release:
+    if: github.event_name == 'release'
+    needs: build-and-audit
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified DMG artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Slip-macOS-arm64
+          path: dist
+
+      - name: Attach DMG to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/Slip-*.dmg dist/Slip-*.dmg.sha256 --clobber

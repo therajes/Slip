@@ -2,6 +2,18 @@ import AppKit
 import Foundation
 import SwiftUI
 
+private final class StrictHTTPSRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(request.url?.scheme?.lowercased() == "https" ? request : nil)
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var devices: [DeviceInfo] = []
@@ -38,6 +50,12 @@ final class AppModel: ObservableObject {
     @Published var installedApps: [InstalledAppInfo] = []
     @Published var isLoadingInstalledApps = false
     @Published var isUninstallingApps = false
+    @Published var activeAppIDs: [DeveloperAppIDInfo] = []
+    @Published var appIDMaxQuantity: UInt64?
+    @Published var appIDAvailableQuantity: Int64?
+    @Published var appIDTeamName = ""
+    @Published var appIDAccount = ""
+    @Published var isLoadingAppIDs = false
     @Published var inspectionDuration: TimeInterval?
     @Published var lastInstallDuration: TimeInterval?
     @Published var refreshingManagedIDs: Set<String> = []
@@ -49,6 +67,8 @@ final class AppModel: ObservableObject {
     let anisetteServer = "ani.sidestore.io"
     private var stageProgress: [String: Double] = [:]
     private var installStartedAt: Date?
+    private var installCancellationRequested = false
+    private var installOperationLease: DeviceOperationLease?
 
     init(startupTasks: Bool = true) {
         reloadAccounts()
@@ -68,21 +88,30 @@ final class AppModel: ObservableObject {
         accountProfiles = AccountProfileStore.load(for: accounts)
         let preferred = UserDefaults.standard.string(forKey: "selectedAccount") ?? ""
         selectedAccount = accounts.contains(preferred) ? preferred : (accounts.first ?? "")
+        if !appIDAccount.isEmpty,
+           appIDAccount.caseInsensitiveCompare(selectedAccount) != .orderedSame {
+            clearAppIDInventory()
+        }
     }
 
     @discardableResult
-    func saveAccount(email: String, password: String, profileName: String = "", profileImageURL: URL? = nil) -> Bool {
+    func saveAccount(email: String, password: String, profileName: String = "") -> Bool {
         do {
             let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard normalized.contains("@"), !password.isEmpty else {
+            let emailParts = normalized.split(separator: "@", omittingEmptySubsequences: false)
+            guard emailParts.count == 2,
+                  emailParts.allSatisfy({ !$0.isEmpty }),
+                  normalized.utf8.count <= 254,
+                  !normalized.contains(where: { $0.isWhitespace || $0.isNewline }),
+                  !password.isEmpty else {
                 throw SideloomError.message("Enter a valid Apple Account and password.")
             }
+            let trimmedName = profileName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmedName.count <= 80, !trimmedName.contains(where: \.isNewline) else {
+                throw SideloomError.message("Profile names must be one line and 80 characters or fewer.")
+            }
             try KeychainStore.save(account: normalized, password: password)
-            try AccountProfileStore.upsert(
-                email: normalized,
-                displayName: profileName,
-                imageURL: profileImageURL
-            )
+            try AccountProfileStore.upsert(email: normalized, displayName: profileName)
             reloadAccounts()
             selectedAccount = normalized
             UserDefaults.standard.set(normalized, forKey: "selectedAccount")
@@ -99,6 +128,7 @@ final class AppModel: ObservableObject {
             try KeychainStore.delete(account: email)
             try? AccountProfileStore.delete(email)
             reloadAccounts()
+            if appIDAccount == email.lowercased() { clearAppIDInventory() }
             appendActivity("Removed \(email) from macOS Keychain")
         } catch {
             errorMessage = error.localizedDescription
@@ -106,26 +136,93 @@ final class AppModel: ObservableObject {
     }
 
     func chooseAccount(_ email: String) {
+        if !appIDAccount.isEmpty,
+           appIDAccount.caseInsensitiveCompare(email) != .orderedSame {
+            clearAppIDInventory()
+        }
         selectedAccount = email
         UserDefaults.standard.set(email, forKey: "selectedAccount")
     }
 
-    func updateAccountPhoto(_ imageURL: URL, for email: String) {
+    func loadActiveAppIDs() async {
+        guard !isLoadingAppIDs else { return }
+        guard !isInstalling && !isUninstallingApps else {
+            errorMessage = "Wait for the current iPhone operation to finish before contacting Apple again."
+            return
+        }
+        guard !selectedAccount.isEmpty else {
+            errorMessage = "Add and select an Apple Account first."
+            return
+        }
+
+        let requestedAccount = selectedAccount
+        isLoadingAppIDs = true
+        errorMessage = nil
+        defer {
+            isLoadingAppIDs = false
+            showTwoFactor = false
+        }
         do {
-            try AccountProfileStore.upsert(email: email, displayName: nil, imageURL: imageURL)
-            reloadAccounts()
+            let password = try KeychainStore.password(for: requestedAccount)
+            let storageURL = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            ).appending(path: "app.sideloom.native/Core", directoryHint: .isDirectory)
+            let request = AppleAccountRequest(
+                email: requestedAccount,
+                password: password,
+                anisetteServer: anisetteServer,
+                storagePath: storageURL.path
+            )
+            let stream = try core.appIDsStream(request: request)
+            var receivedInventory = false
+            for try await event in stream {
+                switch event.type {
+                case "twoFactorRequired":
+                    showTwoFactor = true
+                    appendActivity("Apple requested verification before loading App IDs")
+                case "accountProfile":
+                    if let email = event.email, let accountName = event.accountName {
+                        try? AccountProfileStore.upsert(email: email, displayName: accountName)
+                        reloadAccounts()
+                    }
+                case "appIds":
+                    guard selectedAccount.caseInsensitiveCompare(requestedAccount) == .orderedSame else {
+                        appendActivity("Discarded App IDs because the selected Apple Account changed")
+                        continue
+                    }
+                    activeAppIDs = event.appIds ?? []
+                    appIDMaxQuantity = event.maxQuantity
+                    appIDAvailableQuantity = event.availableQuantity
+                    appIDTeamName = event.message ?? "Apple Developer Team"
+                    appIDAccount = requestedAccount.lowercased()
+                    receivedInventory = true
+                    appendActivity("Loaded \(activeAppIDs.count) active App ID\(activeAppIDs.count == 1 ? "" : "s") from Apple")
+                case "error":
+                    let message = friendlyMessage(event.message ?? "Apple App IDs could not be loaded")
+                    errorMessage = message
+                    appendActivity("App ID loading failed: \(message)")
+                default:
+                    break
+                }
+            }
+            if !receivedInventory && errorMessage == nil {
+                throw SideloomError.message("Apple returned no App ID inventory.")
+            }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyMessage(for: error)
+            appendActivity("App ID loading failed: \(friendlyMessage(for: error))")
         }
     }
 
-    func removeAccountPhoto(for email: String) {
-        do {
-            try AccountProfileStore.removeImage(for: email)
-            reloadAccounts()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+    private func clearAppIDInventory() {
+        activeAppIDs = []
+        appIDMaxQuantity = nil
+        appIDAvailableQuantity = nil
+        appIDTeamName = ""
+        appIDAccount = ""
     }
 
     func refreshDevices() async {
@@ -154,6 +251,10 @@ final class AppModel: ObservableObject {
     }
 
     func loadIPA(_ url: URL) async {
+        guard !isInspecting else {
+            errorMessage = "Wait for the current IPA inspection to finish."
+            return
+        }
         guard url.pathExtension.lowercased() == "ipa" else {
             errorMessage = "Choose a valid .ipa file."
             return
@@ -188,24 +289,51 @@ final class AppModel: ObservableObject {
 
     func downloadIPA(from input: String) async {
         guard !isDownloading else { return }
-        guard let url = URL(string: input.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http" else {
-            errorMessage = "Enter a valid HTTP or HTTPS IPA URL."
+        let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedInput.utf8.count <= 4_096,
+              let url = URL(string: trimmedInput),
+              url.scheme?.lowercased() == "https" else {
+            errorMessage = "Enter a valid HTTPS IPA URL."
             return
         }
         isDownloading = true
         currentStage = "Downloading IPA"
         defer { isDownloading = false }
 
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 30 * 60
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.urlCredentialStorage = nil
+        let session = URLSession(
+            configuration: configuration,
+            delegate: StrictHTTPSRedirectDelegate(),
+            delegateQueue: nil
+        )
+        defer { session.invalidateAndCancel() }
+        let maximumDownloadBytes: Int64 = 4 * 1_024 * 1_024 * 1_024
+
         var lastError: Error?
         for attempt in 1...3 {
+            var importedURL: URL?
             do {
                 appendActivity("Downloading IPA (attempt \(attempt) of 3)")
-                let (temporaryURL, response) = try await URLSession.shared.download(from: url)
+                let (temporaryURL, response) = try await session.download(from: url)
                 if let response = response as? HTTPURLResponse,
                    !(200...299).contains(response.statusCode) {
                     throw SideloomError.message("Download failed with HTTP \(response.statusCode).")
+                }
+                guard response.url?.scheme?.lowercased() == "https" else {
+                    throw SideloomError.message("The download redirected to an insecure connection.")
+                }
+                if response.expectedContentLength > maximumDownloadBytes {
+                    throw SideloomError.message("The download is larger than Slip's 4 GB safety limit.")
+                }
+                let downloadedSize = try FileManager.default.attributesOfItem(
+                    atPath: temporaryURL.path
+                )[.size] as? NSNumber
+                if downloadedSize?.int64Value ?? 0 > maximumDownloadBytes {
+                    throw SideloomError.message("The download is larger than Slip's 4 GB safety limit.")
                 }
                 let support = try FileManager.default.url(
                     for: .applicationSupportDirectory,
@@ -218,22 +346,33 @@ final class AppModel: ObservableObject {
                     withIntermediateDirectories: true,
                     attributes: [.posixPermissions: 0o700]
                 )
-                let suggested = url.lastPathComponent.lowercased().hasSuffix(".ipa")
-                    ? url.lastPathComponent
-                    : "Downloaded.ipa"
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o700],
+                    ofItemAtPath: support.path
+                )
                 let destination = support.appending(
-                    path: "\(UUID().uuidString)-\(suggested)",
+                    path: "\(UUID().uuidString)-Downloaded.ipa",
                     directoryHint: .notDirectory
                 )
                 try FileManager.default.moveItem(at: temporaryURL, to: destination)
+                importedURL = destination
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o600],
+                    ofItemAtPath: destination.path
+                )
                 currentStage = "Inspecting download"
+                errorMessage = nil
                 await loadIPA(destination)
                 if ipa?.path == destination.path {
                     appendActivity("Downloaded and verified \(destination.lastPathComponent)")
                     return
                 }
+                try? FileManager.default.removeItem(at: destination)
                 throw SideloomError.message("The downloaded file is not a valid IPA.")
             } catch {
+                if let importedURL, ipa?.path != importedURL.path {
+                    try? FileManager.default.removeItem(at: importedURL)
+                }
                 lastError = error
                 if attempt < 3 {
                     try? await Task.sleep(for: .seconds(attempt))
@@ -247,6 +386,10 @@ final class AppModel: ObservableObject {
 
     func enableWiFiConnection() async {
         guard !isEnablingWiFi else { return }
+        guard !isInstalling && !isUninstallingApps else {
+            errorMessage = "Wait for the current iPhone operation before changing Wi-Fi pairing."
+            return
+        }
         guard let device = selectedDevice else {
             errorMessage = "Connect and select an iPhone first."
             return
@@ -258,6 +401,8 @@ final class AppModel: ObservableObject {
         isEnablingWiFi = true
         defer { isEnablingWiFi = false }
         do {
+            let operationLease = try DeviceOperationCoordinator.acquire()
+            defer { operationLease.release() }
             let event = try await core.run(["enable-wifi", device.udid])
             appendActivity(event.message ?? "Enabled Wi-Fi connection for \(device.name)")
             await refreshDevices()
@@ -269,6 +414,10 @@ final class AppModel: ObservableObject {
 
     func loadInstalledApps() async {
         guard !isLoadingInstalledApps else { return }
+        guard !isInstalling && !isUninstallingApps else {
+            errorMessage = "Wait for the current iPhone operation before loading apps."
+            return
+        }
         guard let device = selectedDevice else {
             installedApps = []
             return
@@ -276,7 +425,13 @@ final class AppModel: ObservableObject {
         isLoadingInstalledApps = true
         defer { isLoadingInstalledApps = false }
         do {
+            let operationLease = try DeviceOperationCoordinator.acquire()
+            defer { operationLease.release() }
             let event = try await core.run(["apps"], input: device)
+            guard selectedDevice?.identity == device.identity else {
+                appendActivity("Discarded app inventory because the selected iPhone changed")
+                return
+            }
             installedApps = event.apps ?? []
             appendActivity("Loaded \(installedApps.count) user apps from \(device.name)")
         } catch {
@@ -293,6 +448,10 @@ final class AppModel: ObservableObject {
     }
 
     func refreshManagedInstallations(_ ids: Set<String>) {
+        guard !isInstalling && !isUninstallingApps else {
+            errorMessage = "Wait for the current iPhone operation to finish before refreshing."
+            return
+        }
         let available = ids.subtracting(refreshingManagedIDs)
         guard !available.isEmpty else { return }
         refreshingManagedIDs.formUnion(available)
@@ -310,12 +469,16 @@ final class AppModel: ObservableObject {
         isUninstallingApps = true
         defer { isUninstallingApps = false }
         do {
+            let operationLease = try DeviceOperationCoordinator.acquire()
+            defer { operationLease.release() }
             let request = UninstallAppsRequest(device: device, bundleIds: bundleIDs.sorted())
             let event = try await core.run(["uninstall"], input: request)
             let removed = Set(event.bundleIds ?? [])
-            installedApps.removeAll { removed.contains($0.bundleId) }
+            if selectedDevice?.identity == device.identity {
+                installedApps.removeAll { removed.contains($0.bundleId) }
+            }
             if !removed.isEmpty {
-                removeRefreshRecipes(for: removed)
+                removeRefreshRecipes(for: removed, deviceUDID: device.udid)
             }
             appendActivity(event.message ?? "Removed \(removed.count) app\(removed.count == 1 ? "" : "s") from \(device.marketingName)")
             if let errors = event.errors, !errors.isEmpty {
@@ -332,6 +495,14 @@ final class AppModel: ObservableObject {
 
     func install() {
         guard !isInstalling else { return }
+        guard !isLoadingInstalledApps && !isUninstallingApps && !isEnablingWiFi else {
+            errorMessage = "Wait for the current iPhone operation to finish before installing."
+            return
+        }
+        guard !isLoadingAppIDs else {
+            errorMessage = "Wait for Apple App IDs to finish loading before installing."
+            return
+        }
         guard let ipa, let selectedDevice else {
             errorMessage = ipa == nil ? "Choose an IPA first." : "Connect and select an iPhone."
             return
@@ -346,6 +517,7 @@ final class AppModel: ObservableObject {
         }
 
         do {
+            installOperationLease = try DeviceOperationCoordinator.acquire()
             let password = try KeychainStore.password(for: selectedAccount)
             let storageURL = try FileManager.default.url(
                 for: .applicationSupportDirectory,
@@ -363,6 +535,7 @@ final class AppModel: ObservableObject {
                 options: options
             )
             isInstalling = true
+            installCancellationRequested = false
             overallProgress = 0
             stageProgress = [:]
             currentStage = "Starting"
@@ -370,6 +543,8 @@ final class AppModel: ObservableObject {
             appendActivity("Starting install on \(selectedDevice.name) via \(selectedDevice.connectionType)")
             Task { await consumeInstall(request, ipa: ipa) }
         } catch {
+            installOperationLease?.release()
+            installOperationLease = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -448,7 +623,15 @@ final class AppModel: ObservableObject {
     }
 
     private func consumeInstall(_ request: InstallRequest, ipa: IpaInfo) async {
-        defer { isInstalling = false }
+        let account = request.email
+        let device = request.device
+        let options = request.options
+        defer {
+            installOperationLease?.release()
+            installOperationLease = nil
+            isInstalling = false
+            installCancellationRequested = false
+        }
         do {
             let stream = try core.installStream(request: request)
             for try await event in stream {
@@ -476,7 +659,9 @@ final class AppModel: ObservableObject {
                     do {
                         let entry = try AutoRefreshStore.recordSuccessfulInstall(
                             ipa: ipa,
-                            request: request,
+                            account: account,
+                            device: device,
+                            options: options,
                             enabled: keepAutomaticallyRefreshed
                         )
                         reloadManagedInstallations()
@@ -496,12 +681,21 @@ final class AppModel: ObservableObject {
                     break
                 }
             }
+            if installCancellationRequested {
+                currentStage = "Cancelled"
+                appendActivity("Installation cancelled")
+            }
         } catch {
             showTwoFactor = false
             showCertificates = false
-            if errorMessage == nil { errorMessage = friendlyMessage(for: error) }
-            if let errorMessage { appendActivity("Error: \(errorMessage)") }
-            appendActivity("Installation stopped")
+            if installCancellationRequested {
+                currentStage = "Cancelled"
+                appendActivity("Installation cancelled")
+            } else {
+                if errorMessage == nil { errorMessage = friendlyMessage(for: error) }
+                if let errorMessage { appendActivity("Error: \(errorMessage)") }
+                appendActivity("Installation stopped")
+            }
         }
     }
 
@@ -517,17 +711,18 @@ final class AppModel: ObservableObject {
     func submitCertificates(_ serials: [String]?) {
         defer { showCertificates = false }
         do {
-            try core.submitCertificates(serials)
+            let validated = serials?.filter { !$0.isEmpty }
+            try core.submitCertificates(validated?.isEmpty == false ? validated : nil)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     func cancelInstall() {
+        installCancellationRequested = true
         core.cancel()
-        isInstalling = false
-        currentStage = "Cancelled"
-        appendActivity("Installation cancelled")
+        currentStage = "Cancelling"
+        appendActivity("Cancelling installation")
     }
 
     func reloadManagedInstallations() {
@@ -537,13 +732,13 @@ final class AppModel: ObservableObject {
     }
 
     func setAutoRefreshEnabled(_ enabled: Bool, for id: String) {
-        var installations = AutoRefreshStore.load()
-        guard let index = installations.firstIndex(where: { $0.id == id }) else { return }
-        installations[index].enabled = enabled
-        installations[index].status = enabled ? "Scheduled" : "Paused"
-        installations[index].lastError = nil
         do {
-            try AutoRefreshStore.save(installations)
+            try AutoRefreshStore.mutate { installations in
+                guard let index = installations.firstIndex(where: { $0.id == id }) else { return }
+                installations[index].enabled = enabled
+                installations[index].status = enabled ? "Scheduled" : "Paused"
+                installations[index].lastError = nil
+            }
             reloadManagedInstallations()
         } catch {
             errorMessage = error.localizedDescription
@@ -551,10 +746,10 @@ final class AppModel: ObservableObject {
     }
 
     func forgetManagedInstallation(_ id: String) {
-        var installations = AutoRefreshStore.load()
-        installations.removeAll { $0.id == id }
         do {
-            try AutoRefreshStore.save(installations)
+            try AutoRefreshStore.mutate { installations in
+                installations.removeAll { $0.id == id }
+            }
             reloadManagedInstallations()
             appendActivity("Removed an Auto Refresh schedule")
         } catch {
@@ -563,6 +758,10 @@ final class AppModel: ObservableObject {
     }
 
     func refreshManagedInstallationNow(_ id: String) {
+        guard !isInstalling && !isUninstallingApps else {
+            errorMessage = "Wait for the current iPhone operation to finish before refreshing."
+            return
+        }
         guard !refreshingManagedIDs.contains(id) else { return }
         refreshingManagedIDs.insert(id)
         Task {
@@ -573,6 +772,8 @@ final class AppModel: ObservableObject {
                 appendActivity("Auto Refresh completed successfully")
             } else if result.attempted > 0 {
                 appendActivity("Auto Refresh did not complete; review its status")
+            } else {
+                appendActivity("Auto Refresh could not start because another iPhone operation is running")
             }
         }
     }
@@ -602,13 +803,17 @@ final class AppModel: ObservableObject {
         )
     }
 
-    private func removeRefreshRecipes(for bundleIDs: Set<String>) {
-        var installations = AutoRefreshStore.load()
-        let originalCount = installations.count
-        installations.removeAll { bundleIDs.contains($0.bundleId) }
-        guard installations.count != originalCount else { return }
+    private func removeRefreshRecipes(for bundleIDs: Set<String>, deviceUDID: String) {
         do {
-            try AutoRefreshStore.save(installations)
+            var removed = false
+            try AutoRefreshStore.mutate { installations in
+                let originalCount = installations.count
+                installations.removeAll {
+                    $0.deviceUDID == deviceUDID && bundleIDs.contains($0.bundleId)
+                }
+                removed = installations.count != originalCount
+            }
+            guard removed else { return }
             reloadManagedInstallations()
             appendActivity("Removed matching Auto Refresh schedules")
         } catch {
@@ -629,6 +834,10 @@ final class AppModel: ObservableObject {
                 withIntermediateDirectories: true,
                 attributes: [.posixPermissions: 0o700]
             )
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: previewDirectory.path
+            )
             let destination = previewDirectory.appending(
                 path: "\(UUID().uuidString).png",
                 directoryHint: .notDirectory
@@ -638,6 +847,10 @@ final class AppModel: ObservableObject {
                 try? FileManager.default.removeItem(at: destination)
                 return
             }
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: destination.path
+            )
             ipaIconURL = destination
         } catch {
             ipaIconURL = nil

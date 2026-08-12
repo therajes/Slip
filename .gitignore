@@ -32,3 +32,4 @@ dockerfile
 native/.build
 native/build
 native/dist
+/.build

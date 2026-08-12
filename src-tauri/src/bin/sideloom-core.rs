@@ -1,9 +1,12 @@
 #[tokio::main]
 async fn main() {
     std::panic::set_hook(Box::new(|panic| {
-        sideloom_lib::headless::emit_fatal(&format!(
-            "Slip core encountered an internal error: {panic}"
-        ));
+        if std::env::var_os("SIDELOOM_DIAGNOSTIC").is_some() {
+            eprintln!("{panic}");
+        }
+        sideloom_lib::headless::emit_fatal(
+            "Slip core encountered an unexpected internal error. Restart Slip and try again.",
+        );
     }));
     if rustls::crypto::ring::default_provider()
         .install_default()
@@ -17,7 +20,7 @@ async fn main() {
             eprintln!("{error:?}");
         }
         sideloom_lib::headless::emit_fatal(&sideloom_lib::headless::user_facing_error(
-            &error.to_string(),
+            error.as_ref(),
         ));
         std::process::exit(1);
     }

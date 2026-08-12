@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.0.0 — 2026-08-11
+
+### Added
+
+- Active App ID inventory with Apple-reported quota, reset time, developer team, and app/extension context.
+- Cross-process iPhone operation coordination so foreground installs, inventory actions, uninstalls, Wi-Fi setup, and background refreshes cannot collide.
+- Native ARM64 GitHub build, test, audit, DMG, checksum, and release workflow.
+
+### Changed
+
+- Removed the Apple Account profile-photo feature; compact generated-initial identity cards cannot distort the account layout or leave local image residue.
+- Reduced Slip to its maintained native SwiftUI application and focused Rust core, removing the dormant Tauri/React and cross-platform build surface.
+- Updated the signing and device stack and reworked process I/O to stream output continuously, eliminating large-icon inventory deadlocks.
+- Refresh Guard now merges schedule updates atomically, preserves paused state during manual refresh, and verifies its launch agent after installation.
+
+### Fixed
+
+- Restored installed-app loading and resilient artwork retrieval for every compatible app, with bounded icon payloads and graceful fallbacks.
+- Removed duplicate iPhone Apps checkboxes and made selection actions device-specific and explicit.
+- Prevented canceled installs from reporting false failures or releasing their device lock before the core process exits.
+- Added strict IPA path, size, entry-count, plist, icon, Mach-O, identity, and custom-value validation.
+- Hardened URL downloads with ephemeral networking, timeouts, size limits, cleanup, and owner-only storage.
+- Zeroed Apple Account passwords in the Rust core immediately after authentication and kept errors free of credential data and source paths.
+
+### Performance
+
+- Reuses the prepared and compressed IPA across transfer retries instead of rebuilding it.
+- Drains core output concurrently and caps inventory/icon buffers, keeping large app libraries responsive without unbounded memory growth.
+
 ## 1.1.2 — 2026-08-11
 
 ### Added

@@ -1,9 +1,9 @@
 use std::{
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     io::{BufReader, BufWriter},
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use idevice::{
@@ -13,17 +13,15 @@ use idevice::{
     provider::IdeviceProvider,
 };
 use plist_macro::plist;
-#[cfg(feature = "tauri-ui")]
-use tauri::WebviewWindow;
 use tracing::info;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 use crate::error::AppError;
-#[cfg(feature = "tauri-ui")]
-use crate::operation::Operation;
 
-const REMOTE_IPA: &str = "PublicStaging/Sideloom.ipa";
+const REMOTE_IPA: &str = "PublicStaging/Slip.ipa";
 const TRANSFER_CHUNK: usize = 1024 * 1024;
+const DEVICE_IO_TIMEOUT: Duration = Duration::from_secs(30);
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 fn zip_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
@@ -137,9 +135,13 @@ fn create_signed_ipa(signed_app: &Path, destination: &Path) -> Result<u64, AppEr
         .ok_or_else(|| AppError::Misc("Signed app has no bundle name".into()))?;
     let output = BufWriter::with_capacity(
         TRANSFER_CHUNK,
-        File::create(destination).map_err(|error| {
-            AppError::Filesystem("Unable to create optimized IPA".into(), error.to_string())
-        })?,
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination)
+            .map_err(|error| {
+                AppError::Filesystem("Unable to create optimized IPA".into(), error.to_string())
+            })?,
     );
     let mut writer = ZipWriter::new(output).set_auto_large_file();
     add_tree(
@@ -161,21 +163,6 @@ fn device_error(context: &str, error: impl std::fmt::Display) -> AppError {
     AppError::DeviceComsWithMessage(context.to_string(), error.to_string())
 }
 
-#[cfg(feature = "tauri-ui")]
-pub async fn install_signed_app_fast(
-    provider: &impl IdeviceProvider,
-    signed_app: &Path,
-    optimized_ipa: &Path,
-    window: &WebviewWindow,
-) -> Result<(), AppError> {
-    let progress_window = window.clone();
-    install_signed_app_fast_with_progress(provider, signed_app, optimized_ipa, move |progress| {
-        let _ = Operation::new("custom_sideload".to_string(), &progress_window)
-            .progress("install", progress);
-    })
-    .await
-}
-
 pub async fn install_signed_app_fast_with_progress<F>(
     provider: &impl IdeviceProvider,
     signed_app: &Path,
@@ -186,62 +173,93 @@ where
     F: Fn(f32) + Clone + Send + Sync + 'static,
 {
     progress(0.01);
-    let signed_app = signed_app.to_path_buf();
-    let optimized_ipa_for_packaging = optimized_ipa.to_path_buf();
-    let package_started = Instant::now();
-    let package_size = tokio::task::spawn_blocking(move || {
-        create_signed_ipa(&signed_app, &optimized_ipa_for_packaging)
-    })
-    .await
-    .map_err(|error| AppError::Misc(format!("Optimized packaging task failed: {error}")))??;
-    let package_seconds = package_started.elapsed().as_secs_f64();
-    info!(
-        bytes = package_size,
-        seconds = package_seconds,
-        "Created single-file optimized IPA"
-    );
+    let package_size = if optimized_ipa.is_file() {
+        fs::metadata(optimized_ipa)
+            .map_err(|error| {
+                AppError::Filesystem("Unable to inspect optimized IPA".into(), error.to_string())
+            })?
+            .len()
+    } else {
+        let signed_app = signed_app.to_path_buf();
+        let optimized_ipa_for_packaging = optimized_ipa.to_path_buf();
+        let package_started = Instant::now();
+        let package_size = tokio::task::spawn_blocking(move || {
+            create_signed_ipa(&signed_app, &optimized_ipa_for_packaging)
+        })
+        .await
+        .map_err(|error| AppError::Misc(format!("Optimized packaging task failed: {error}")))??;
+        let package_seconds = package_started.elapsed().as_secs_f64();
+        info!(
+            bytes = package_size,
+            seconds = package_seconds,
+            "Created single-file optimized IPA"
+        );
+        package_size
+    };
     progress(0.08);
 
-    let mut afc = AfcClient::connect(provider)
+    let mut afc = tokio::time::timeout(DEVICE_IO_TIMEOUT, AfcClient::connect(provider))
         .await
+        .map_err(|_| AppError::DeviceComs("Timed out opening native AFC transfer".into()))?
         .map_err(|error| device_error("Unable to open native AFC transfer", error))?;
-    if afc.get_file_info("PublicStaging").await.is_err() {
-        afc.mk_dir("PublicStaging")
+    let staging_exists =
+        tokio::time::timeout(DEVICE_IO_TIMEOUT, afc.get_file_info("PublicStaging"))
             .await
+            .is_ok_and(|result| result.is_ok());
+    if !staging_exists {
+        tokio::time::timeout(DEVICE_IO_TIMEOUT, afc.mk_dir("PublicStaging"))
+            .await
+            .map_err(|_| AppError::DeviceComs("Timed out creating the device staging area".into()))?
             .map_err(|error| device_error("Unable to create device staging area", error))?;
     }
-    let _ = afc.remove(REMOTE_IPA).await;
-    let mut remote = afc
-        .open(REMOTE_IPA, AfcFopenMode::WrOnly)
-        .await
-        .map_err(|error| device_error("Unable to open optimized device package", error))?;
-    let mut local = tokio::fs::File::open(optimized_ipa)
-        .await
-        .map_err(|error| {
-            AppError::Filesystem("Unable to open optimized IPA".into(), error.to_string())
-        })?;
-    let mut buffer = vec![0_u8; TRANSFER_CHUNK];
-    let mut transferred = 0_u64;
+    let _ = tokio::time::timeout(DEVICE_IO_TIMEOUT, afc.remove(REMOTE_IPA)).await;
     let transfer_started = Instant::now();
-    loop {
-        use tokio::io::AsyncReadExt;
-        let count = local.read(&mut buffer).await.map_err(|error| {
-            AppError::Filesystem("Unable to read optimized IPA".into(), error.to_string())
-        })?;
-        if count == 0 {
-            break;
-        }
-        remote
-            .write_entire(&buffer[..count])
-            .await
-            .map_err(|error| device_error("Native IPA transfer failed", error))?;
-        transferred += count as u64;
-        progress(0.08 + 0.70 * transferred as f32 / package_size.max(1) as f32);
-    }
-    remote
-        .close()
+    let transfer_result: Result<u64, AppError> = async {
+        let mut remote = tokio::time::timeout(
+            DEVICE_IO_TIMEOUT,
+            afc.open(REMOTE_IPA, AfcFopenMode::WrOnly),
+        )
         .await
-        .map_err(|error| device_error("Unable to finish native IPA transfer", error))?;
+        .map_err(|_| AppError::DeviceComs("Timed out opening the device package".into()))?
+        .map_err(|error| device_error("Unable to open optimized device package", error))?;
+        let mut local = tokio::fs::File::open(optimized_ipa)
+            .await
+            .map_err(|error| {
+                AppError::Filesystem("Unable to open optimized IPA".into(), error.to_string())
+            })?;
+        let mut buffer = vec![0_u8; TRANSFER_CHUNK];
+        let mut transferred = 0_u64;
+        loop {
+            use tokio::io::AsyncReadExt;
+            let count = local.read(&mut buffer).await.map_err(|error| {
+                AppError::Filesystem("Unable to read optimized IPA".into(), error.to_string())
+            })?;
+            if count == 0 {
+                break;
+            }
+            tokio::time::timeout(DEVICE_IO_TIMEOUT, remote.write_entire(&buffer[..count]))
+                .await
+                .map_err(|_| AppError::DeviceComs("Native IPA transfer timed out".into()))?
+                .map_err(|error| device_error("Native IPA transfer failed", error))?;
+            transferred += count as u64;
+            progress(0.08 + 0.70 * transferred as f32 / package_size.max(1) as f32);
+        }
+        tokio::time::timeout(DEVICE_IO_TIMEOUT, remote.close())
+            .await
+            .map_err(|_| {
+                AppError::DeviceComs("Timed out finishing the native IPA transfer".into())
+            })?
+            .map_err(|error| device_error("Unable to finish native IPA transfer", error))?;
+        Ok(transferred)
+    }
+    .await;
+    let transferred = match transfer_result {
+        Ok(transferred) => transferred,
+        Err(error) => {
+            let _ = tokio::time::timeout(DEVICE_IO_TIMEOUT, afc.remove(REMOTE_IPA)).await;
+            return Err(error);
+        }
+    };
     let transfer_seconds = transfer_started.elapsed().as_secs_f64();
     info!(
         bytes = transferred,
@@ -250,12 +268,17 @@ where
         "Single-file native transfer completed"
     );
 
-    let mut installer = InstallationProxyClient::connect(provider)
-        .await
-        .map_err(|error| device_error("Unable to start Apple Installation Proxy", error))?;
+    let mut installer = tokio::time::timeout(
+        DEVICE_IO_TIMEOUT,
+        InstallationProxyClient::connect(provider),
+    )
+    .await
+    .map_err(|_| AppError::DeviceComs("Timed out starting Apple Installation Proxy".into()))?
+    .map_err(|error| device_error("Unable to start Apple Installation Proxy", error))?;
     let install_progress = progress.clone();
-    installer
-        .install_with_callback(
+    let install_result = tokio::time::timeout(
+        INSTALL_TIMEOUT,
+        installer.install_with_callback(
             REMOTE_IPA,
             Some(plist!({ "PackageType": "Developer" })),
             move |(percentage, _)| {
@@ -265,10 +288,13 @@ where
                 }
             },
             (),
-        )
-        .await
-        .map_err(|error| device_error("Apple Installation Proxy rejected the app", error))?;
-    let _ = afc.remove(REMOTE_IPA).await;
+        ),
+    )
+    .await
+    .map_err(|_| AppError::DeviceComs("iPhone installation timed out".into()))?
+    .map_err(|error| device_error("Apple Installation Proxy rejected the app", error));
+    let _ = tokio::time::timeout(DEVICE_IO_TIMEOUT, afc.remove(REMOTE_IPA)).await;
+    install_result?;
     progress(1.0);
     Ok(())
 }
