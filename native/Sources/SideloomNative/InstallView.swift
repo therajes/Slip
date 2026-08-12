@@ -476,31 +476,39 @@ struct InstallView: View {
                     Button("Cancel", role: .destructive) { model.cancelInstall() }
                 }
             } else {
-                HStack(spacing: 14) {
-                    if model.accounts.isEmpty {
-                        Button { NotificationCenter.default.post(name: .showAccounts, object: nil) } label: {
-                            Label("Add Apple Account", systemImage: "person.badge.plus")
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 14) {
+                        if model.accounts.isEmpty {
+                            Button { NotificationCenter.default.post(name: .showAccounts, object: nil) } label: {
+                                Label("Add Apple Account", systemImage: "person.badge.plus")
+                            }
+                        } else {
+                            Picker("Apple Account", selection: $model.selectedAccount) {
+                                ForEach(model.accounts, id: \.self) { Text($0).tag($0) }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 250)
+                            .onChange(of: model.selectedAccount) { _, value in model.chooseAccount(value) }
                         }
-                    } else {
-                        Picker("Apple Account", selection: $model.selectedAccount) {
-                            ForEach(model.accounts, id: \.self) { Text($0).tag($0) }
-                        }
-                        .labelsHidden()
-                        .frame(maxWidth: 250)
-                        .onChange(of: model.selectedAccount) { _, value in model.chooseAccount(value) }
+
+                        Toggle("Auto Refresh", isOn: $model.keepAutomaticallyRefreshed)
+                            .toggleStyle(.switch)
+                            .help("Refresh about 24 hours before the free seven-day profile expires")
+                        Spacer(minLength: 0)
                     }
 
-                    Toggle("Auto Refresh", isOn: $model.keepAutomaticallyRefreshed)
-                        .toggleStyle(.switch)
-                        .help("Refresh about 24 hours before the free seven-day profile expires")
-                    Spacer()
-                    Button { exportIPA() } label: { Label("Export", systemImage: "square.and.arrow.up") }
-                        .disabled(!model.canExport || model.isExporting)
-                    Button { model.install() } label: { Label("Sign & Install", systemImage: "arrow.down.app.fill") }
-                        .slipProminentButton()
-                        .controlSize(.large)
-                        .disabled(!model.canInstall)
-                        .help(model.blockingInstallIssue.map { "\($0.title): \($0.detail)" } ?? "Sign and install on the selected iPhone")
+                    HStack(spacing: 12) {
+                        Spacer(minLength: 0)
+                        Button { exportIPA() } label: { Label("Export", systemImage: "square.and.arrow.up") }
+                            .fixedSize(horizontal: true, vertical: false)
+                            .disabled(!model.canExport || model.isExporting)
+                        Button { model.install() } label: { Label("Sign & Install", systemImage: "arrow.down.app.fill") }
+                            .slipProminentButton()
+                            .controlSize(.large)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .disabled(!model.canInstall)
+                            .help(model.blockingInstallIssue.map { "\($0.title): \($0.detail)" } ?? "Sign and install on the selected iPhone")
+                    }
                 }
             }
         }
