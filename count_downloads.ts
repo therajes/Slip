@@ -1,7 +1,7 @@
 // Add up all the download counts for all releases of the project, excluding latest.json and .sig files.
 // This is used to track the total number of downloads across all releases, since GitHub doesn't show it for some reason.
 
-const REPO = "nab138/iloader";
+const REPO = 'therajes/Slip';
 const API_URL = `https://api.github.com/repos/${REPO}/releases?per_page=100`;
 const TOKEN = process.env.GITHUB_TOKEN;
 

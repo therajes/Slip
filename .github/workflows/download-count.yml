@@ -17,17 +17,21 @@ jobs:
 
       - name: Run download counter
         id: count
-        run: echo "download_count=$(bun count_downloads.ts)" >> "$GITHUB_OUTPUT"
+        run: |
+          count=$(bun count_downloads.ts)
+          echo "download_count=$count" >> "$GITHUB_OUTPUT"
+          echo "Download count: $count" >> "$GITHUB_STEP_SUMMARY"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Gist
+        if: ${{ secrets.GIST_SECRET != '' }}
         uses: schneegans/dynamic-badges-action@v1.8.0
         with:
           auth: ${{ secrets.GIST_SECRET }}
           gistID: 28258aff7e3f1d3a3084a21f4cff2e57
-          filename: iloader_downloads.json
-          label: downloads
+          filename: slip_downloads.json
+          label: Slip Downloads
           message: ${{ steps.count.outputs.download_count }}
           color: brightgreen
           labelColor: 555
