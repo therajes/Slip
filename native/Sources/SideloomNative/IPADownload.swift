@@ -1,0 +1,197 @@
+import Foundation
+
+struct IPADownloadProgress: Sendable {
+    var received: Int64 = 0
+    var expected: Int64? = nil
+    var bytesPerSecond: Double = 0
+    var attempt: Int = 1
+    var retryDelay: Int? = nil
+    var fraction: Double? { expected.flatMap { $0 > 0 ? min(1, Double(received) / Double($0)) : nil } }
+    var detail: String {
+        if let retryDelay { return "Retrying in \(retryDelay) s · attempt \(attempt) of 3" }
+        let bytes = received.formatted(.byteCount(style: .file))
+        let total = expected.map { " of \($0.formatted(.byteCount(style: .file)))" } ?? ""
+        let speed = bytesPerSecond > 0 ? " · \(Int64(bytesPerSecond).formatted(.byteCount(style: .file)))/s" : ""
+        return bytes + total + speed
+    }
+}
+
+enum IPADownloadError: LocalizedError {
+    case invalidURL, invalidArchive, http(Int, Int?)
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL: "Enter a complete HTTP or HTTPS download link without a username or password."
+        case .invalidArchive: "The link returned a webpage or another file instead of an IPA archive. Use the direct download link."
+        case .http(401, _), .http(403, _): "The download link requires access or has expired. Get a fresh direct download link."
+        case .http(404, _): "The IPA was not found. Check the download link (HTTP 404)."
+        case .http(let code, _): "The download service returned HTTP \(code). Try again later."
+        }
+    }
+}
+
+enum IPADownloadPolicy {
+    static func url(_ input: String) -> URL? {
+        guard let parts = URLComponents(string: input.trimmingCharacters(in: .whitespacesAndNewlines)),
+              ["http", "https"].contains(parts.scheme?.lowercased() ?? ""),
+              parts.host?.isEmpty == false, parts.user == nil, parts.password == nil else { return nil }
+        return parts.url
+    }
+    static func retryDelay(_ error: Error, attempt: Int) -> Int? {
+        guard attempt < 3 else { return nil }
+        if case let IPADownloadError.http(code, delay) = error, [429, 500, 502, 503, 504].contains(code) {
+            return min(30, max(1, delay ?? attempt * 2))
+        }
+        if let error = error as? URLError,
+           [.timedOut, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed].contains(error.code) {
+            return attempt * 2
+        }
+        return nil
+    }
+    static func message(_ error: Error) -> String {
+        if let error = error as? IPADownloadError { return error.localizedDescription }
+        if let error = error as? URLError {
+            switch error.code {
+            case .notConnectedToInternet: return "You’re offline. Reconnect, then try the download again."
+            case .timedOut: return "The download server timed out. Try again or use another direct link."
+            case .serverCertificateUntrusted, .secureConnectionFailed: return "The download server’s secure connection could not be verified."
+            default: return "The download connection was interrupted. Try again."
+            }
+        }
+        return "The IPA could not be saved. Check available storage and try again."
+    }
+}
+
+struct IPAURLDownloadService: Sendable {
+    func download(_ url: URL, to directory: URL,
+                  progress: @escaping @Sendable (IPADownloadProgress) -> Void) async throws -> URL {
+        for attempt in 1...3 {
+            try Task.checkCancellation()
+            do {
+                return try await IPAFileDownload(url: url, directory: directory, attempt: attempt, progress: progress).run()
+            } catch {
+                try Task.checkCancellation()
+                guard let delay = IPADownloadPolicy.retryDelay(error, attempt: attempt) else { throw error }
+                progress(IPADownloadProgress(attempt: attempt + 1, retryDelay: delay))
+                try await Task.sleep(for: .seconds(delay))
+            }
+        }
+        throw URLError(.cannotLoadFromNetwork)
+    }
+}
+
+/// URLSession writes large IPAs to disk. The delegate moves the temporary file
+/// before URLSession removes it, and cancellation finishes its continuation once.
+private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let url: URL
+    private let directory: URL
+    private let attempt: Int
+    private let progress: @Sendable (IPADownloadProgress) -> Void
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<URL, Error>?
+    private var session: URLSession?
+    private var task: URLSessionDownloadTask?
+    private var cancelled = false
+    private var finished = false
+    private var started = Date()
+    private var lastProgress = Date.distantPast
+
+    init(url: URL, directory: URL, attempt: Int, progress: @escaping @Sendable (IPADownloadProgress) -> Void) {
+        self.url = url; self.directory = directory; self.attempt = attempt; self.progress = progress
+    }
+
+    func run() async throws -> URL {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+                if cancelled { lock.unlock(); continuation.resume(throwing: CancellationError()); return }
+                self.continuation = continuation
+                let config = URLSessionConfiguration.ephemeral
+                config.httpShouldSetCookies = false
+                config.httpCookieStorage = nil
+                config.urlCredentialStorage = nil
+                config.urlCache = nil
+                config.timeoutIntervalForRequest = 45
+                config.timeoutIntervalForResource = 3600
+                let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+                self.session = session
+                let task = session.downloadTask(with: URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+                self.task = task
+                started = Date()
+                lock.unlock()
+                task.resume()
+            }
+        } onCancel: { self.cancel() }
+    }
+
+    private func cancel() {
+        lock.lock(); cancelled = true; let task = task; lock.unlock()
+        task?.cancel()
+        finish(.failure(CancellationError()))
+    }
+
+    @discardableResult
+    private func finish(_ result: Result<URL, Error>) -> Bool {
+        lock.lock()
+        guard !finished else { lock.unlock(); return false }
+        finished = true
+        let continuation = continuation
+        self.continuation = nil
+        let session = session
+        self.session = nil
+        task = nil
+        lock.unlock()
+        continuation?.resume(with: result)
+        session?.finishTasksAndInvalidate()
+        return true
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        lock.lock()
+        let now = Date()
+        let report = !finished && (now.timeIntervalSince(lastProgress) >= 0.15 || totalBytesWritten == totalBytesExpectedToWrite)
+        if report { lastProgress = now }
+        let elapsed = max(now.timeIntervalSince(started), 0.1)
+        lock.unlock()
+        if report {
+            progress(IPADownloadProgress(received: totalBytesWritten,
+                                         expected: totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil,
+                                         bytesPerSecond: Double(totalBytesWritten) / elapsed, attempt: attempt))
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        guard let redirected = request.url, IPADownloadPolicy.url(redirected.absoluteString) != nil,
+              !(response.url?.scheme?.lowercased() == "https" && redirected.scheme?.lowercased() == "http") else { completionHandler(nil); return }
+        completionHandler(request)
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        var saved: URL?
+        do {
+            guard let response = downloadTask.response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+            guard (200...299).contains(response.statusCode) else {
+                throw IPADownloadError.http(response.statusCode, response.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init))
+            }
+            let handle = try FileHandle(forReadingFrom: location)
+            let signature = try handle.read(upToCount: 4)
+            try handle.close()
+            guard signature == Data([0x50, 0x4b, 0x03, 0x04]) else { throw IPADownloadError.invalidArchive }
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let destination = directory.appending(path: "\(UUID().uuidString).ipa")
+            try FileManager.default.moveItem(at: location, to: destination)
+            saved = destination
+            lock.lock(); let cancelled = cancelled; lock.unlock()
+            if cancelled { throw CancellationError() }
+            if !finish(.success(destination)) { try? FileManager.default.removeItem(at: destination) }
+        } catch {
+            if let saved { try? FileManager.default.removeItem(at: saved) }
+            finish(.failure(error))
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        finish(.failure(error ?? URLError(.badServerResponse)))
+    }
+}

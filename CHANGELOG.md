@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.4.0 - 2026-11-01
+
+### Added
+
+- **App Library**: Added persistent workspace management in the floating navigation panel (⌘6). Saves app metadata, bundle identifiers, icon references, extension selections, plist customizations, target accounts, and destination iPhones in `~/Library/Application Support/app.sideloom.native/Library/workspaces-v1.json` with owner-only (0700) permissions. Automatically restores the last workspace on launch without initiating signing, validates IPA file stamps, and offers a "Locate IPA…" action for moved or missing files.
+- **Installation Queue**: Added batch IPA import via file picker or drag-and-drop preserving Finder order. Unreviewed imports begin in "Review required" state; once reviewed with account and destination choices, apps can be reordered or removed. "Install Queue" executes sequentially using frozen option snapshots and halts on the first failure or cancellation with "Review & Retry" rather than proceeding with invalid states.
+- **Native macOS 26 Liquid Glass Interface**: Native SwiftUI Liquid Glass window chrome using Droppy Code 1.7.0 `glassEffect(in:)` with 12% theme wash, 1-point rims, and floating navigation capsules (⌘1–⌘6). Built for macOS 26+ using macOS SDK 27.2 / Xcode 27.2, featuring responsive layouts and full support for system Reduce Motion, Reduce Transparency, and contrast preferences.
+- **Kernel File Lease Operation Coordinator**: Added `FileLease` and `OperationCoordinator` using kernel file leases (`flock`) to serialize signing, installation, and refresh tasks across the main GUI app and background LaunchAgent worker. Leases release automatically on process termination without arbitrary 20-minute timeouts, and schedule modifications are guarded by atomic read/modify/write transactions.
+- **Download Task Manager**: Added disk-backed `URLSessionDownloadTask` manager supporting real-time transfer progress (received/total bytes, transfer speed, and progress fraction), cancellation, and bounded exponential retry backoff (up to 3 attempts) for transient network drops and HTTP 429/50x errors. Insecure HTTP redirects and credentials in URLs are strictly rejected.
+- **Automated Test Suites**: Expanded test coverage to 54 passing Swift unit and integration tests across 7 suites (`AppLibraryTests`, `ReliabilityTests`, `IPADownloadTests`, `CoreClientTests`, `AuthenticationFlowTests`, `AnisetteServerDirectoryTests`, and `WindowFocusTests`), verifying workspace persistence, queue serialization, file lease safety, download mechanics, and UI focus without live Apple account mutation.
+
+### Changed
+
+- Minimum deployment target is now macOS 26.0 (linked against macOS SDK 27.2).
+- Background worker renewal checks run every 15 minutes and mark interactive 2FA requirements as "Needs attention" without entering unattended retry loops.
+- Interrupted installations revert to "Review required" state on application restart rather than assuming device transfers completed.
+
 ## 1.1.2 — 2026-08-11
 
 ### Added

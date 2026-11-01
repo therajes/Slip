@@ -1,0 +1,21 @@
+diff --git a/source/app.d b/source/app.d
+--- a/source/app.d
++++ b/source/app.d
+@@ -36,7 +36,7 @@ __gshared string libraryPath;
+ __gshared string provisioningPath;
+ 
+ enum brandingCode = format!"anisette-v3-server v%s"(provisionVersion);
+-enum clientInfo = "<MacBookPro13,2> <macOS;13.1;22C65> <com.apple.AuthKit/1 (com.apple.akd/1.0)>";
++enum clientInfo = "<PC> <Windows;6.2(0,0);9200> <com.apple.AuthKit/1 (com.apple.akd/1.0)>";
+ enum dsId = -2;
+ 
+ __gshared ADI v1Adi;
+@@ -222,7 +222,7 @@ class AnisetteService {
+ 
+ 		res.headers["Implementation-Version"] = brandingCode;
+ 		res.writeBody(responseJson.toString(JSONOptions.doNotEscapeSlashes), "application/json");
+-		log.infoF!"[>>] 200 OK %s"(responseJson);
++		log.info("[>>] anisette-v1 request OK.");
+ 	}
+ 
+ 	@method(HTTPMethod.GET)

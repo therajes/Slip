@@ -7,6 +7,11 @@ struct IPhoneModelPreview: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var connectionAnimated = false
 
+    init(device: DeviceInfo) {
+        self.device = device
+    }
+
+
     private var usesNetwork: Bool {
         device.connectionType.caseInsensitiveCompare("Network") == .orderedSame
     }
@@ -64,17 +69,12 @@ struct IPhoneModelPreview: View {
             RoundedRectangle(cornerRadius: outerRadius, style: .continuous)
                 .fill(.white.opacity(colorScheme == .dark ? 0.055 : 0.20))
 
-            if #available(macOS 26.0, *) {
-                RoundedRectangle(cornerRadius: outerRadius, style: .continuous)
-                    .fill(.clear)
-                    .glassEffect(
-                        .regular.tint(.white.opacity(colorScheme == .dark ? 0.045 : 0.12)).interactive(),
-                        in: RoundedRectangle(cornerRadius: outerRadius, style: .continuous)
-                    )
-            } else {
-                RoundedRectangle(cornerRadius: outerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            }
+            RoundedRectangle(cornerRadius: outerRadius, style: .continuous)
+                .fill(.clear)
+                .glassEffect(
+                    .regular.tint(.white.opacity(colorScheme == .dark ? 0.045 : 0.12)).interactive(),
+                    in: RoundedRectangle(cornerRadius: outerRadius, style: .continuous)
+                )
 
             // The display intentionally stays empty. Its only visual treatment is
             // a neutral sheet of glass so the preview reads like a system icon.
@@ -184,7 +184,7 @@ struct IPhoneModelPreview: View {
             Image(systemName: "wifi")
                 .font(.system(size: 12, weight: .semibold))
                 .slipDimensionalSymbol(strength: 0.72)
-                .foregroundStyle(.primary.opacity(0.86))
+                .foregroundStyle(Chrome.primaryText)
                 .scaleEffect(connectionAnimated ? 1 : 0.94)
         }
         .accessibilityHidden(true)
@@ -192,33 +192,18 @@ struct IPhoneModelPreview: View {
 
     @ViewBuilder
     private var connectionGlassBadge: some View {
-        if #available(macOS 26.0, *) {
-            Circle()
-                .fill(.clear)
-                .frame(width: 24, height: 24)
-                .glassEffect(.regular.tint(.white.opacity(0.06)).interactive(), in: Circle())
-        } else {
-            Circle()
-                .fill(.ultraThinMaterial)
-                .frame(width: 24, height: 24)
-                .overlay { Circle().stroke(.white.opacity(0.24), lineWidth: 0.7) }
-        }
+        Circle()
+            .fill(.clear)
+            .frame(width: 24, height: 24)
+            .glassEffect(.regular.tint(.white.opacity(0.06)).interactive(), in: Circle())
     }
 
     private func restartConnectionAnimation() {
         connectionAnimated = !motionAllowed
         guard motionAllowed else { return }
 
-        if usesNetwork {
-            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
-                connectionAnimated = true
-            }
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                withAnimation(.spring(response: 0.58, dampingFraction: 0.76)) {
-                    connectionAnimated = true
-                }
-            }
+        withAnimation(.spring(response: 0.58, dampingFraction: 0.82)) {
+            connectionAnimated = true
         }
     }
 }

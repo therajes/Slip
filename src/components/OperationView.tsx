@@ -10,7 +10,8 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Trans, useTranslation } from "react-i18next";
-import { ErrorVariant, getErrorSuggestions, parseLinkToken } from "../errors";
+import { ErrorVariant, getErrorSuggestions, getHumanMessage, parseLinkToken } from "../errors";
+
 import { useStore } from "../StoreContext";
 import { usePlatform } from "../PlatformContext";
 
@@ -92,14 +93,6 @@ export default ({
             let started = operationState.started.includes(step.id);
             let notStarted = !failed && !completed && !started;
 
-            // a little bit gross but it gets the job done.
-            let lines =
-              failed?.extraDetails.message
-                ?.split("\n")
-                .filter((line) => line.includes("●")) ?? [];
-            let errorShort =
-              lines[lines.length - 1]?.replace(/●\s*/, "").trim() ?? "";
-
             return (
               <div className="operation-step" key={step.id}>
                 <div className="operation-step-icon">
@@ -138,39 +131,29 @@ export default ({
                     )}
                   {failed && (
                     <>
-                      <pre className="operation-extra-details">
-                        {!errorShort
-                          ? failed.extraDetails.message.replace(/^\n+/, "")
-                          : errorShort}
-                      </pre>
-                      {errorShort !== "" &&
-                        errorShort !== null &&
-                        errorShort !== undefined && (
-                          <>
-                            <p
-                              className="operation-more-details"
-                              role="button"
-                              tabIndex={0}
-                              onClick={() =>
-                                setMoreDetailsOpen(!moreDetailsOpen)
-                              }
-                            >
-                              {t("common.more_details")}{" "}
-                              {moreDetailsOpen ? "▲" : "▼"}
-                            </p>
-                            {moreDetailsOpen && (
-                              <pre className="operation-extra-details">
-                                {failed.extraDetails.message.replace(
-                                  /^\n+/,
-                                  "",
-                                )}
-                              </pre>
-                            )}
-                          </>
-                        )}
+                      {/* Prominent human-readable error message */}
+                      <div className="operation-human-error">
+                        {getHumanMessage(failed.extraDetails)}
+                      </div>
+                      {/* Technical details collapsed by default */}
+                      <p
+                        className="operation-more-details"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setMoreDetailsOpen(!moreDetailsOpen)}
+                      >
+                        {t("common.more_details")}{" "}
+                        {moreDetailsOpen ? "▲" : "▼"}
+                      </p>
+                      {moreDetailsOpen && (
+                        <pre className="operation-extra-details">
+                          {failed.extraDetails.message.replace(/^\n+/, "")}
+                        </pre>
+                      )}
                     </>
                   )}
                 </div>
+
               </div>
             );
           })}

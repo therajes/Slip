@@ -10,6 +10,8 @@ Slip is intentionally iPhone-only. It does not target Apple TV, Apple-silicon Ma
 
 ![Slip drag-to-Applications disk image](design/screenshots/slip-dmg.png)
 
+Explore the full [Visual Showcase and UI Gallery](docs/GALLERY.md).
+
 ## Highlights
 
 - Native Liquid Glass interface built with SwiftUI and AppKit.
@@ -46,11 +48,11 @@ Apple Personal Team provisioning profiles expire after seven days and stock iOS 
 
 ## Build the native app
 
-Requirements: macOS 15 or newer, Xcode command-line tools, Rust, and an Apple-silicon Mac. The Liquid Glass appearance activates on macOS 26 or newer and falls back to native materials on earlier supported systems.
+Requirements: macOS 26 or newer, Xcode 26 or newer with command-line tools, Rust, and an Apple-silicon Mac. The interface uses native Liquid Glass throughout. Accessibility and performance settings retain solid surfaces when requested.
 
 ```sh
 ./native/build.sh
-./native/create-dmg.sh native/build/Slip.app native/dist/Slip-1.1.2.dmg
+./native/create-dmg.sh native/build/Slip.app native/dist/Slip-2.4.0.dmg
 ```
 
 Verification:
@@ -68,10 +70,23 @@ swift build -c debug
 
 All signing, customization, and device communication happen locally except requests required by Apple developer services and the configured anisette service. Passwords travel to the bundled core over an anonymous stdin pipe and can be stored only through macOS Keychain after explicit consent. Slip does not include analytics or an account server.
 
+Two-factor verification appears beneath the password and stays visible through
+developer-session setup. Slip owns the sign-in lifecycle, safe recovery policy,
+provider isolation, and Keychain-backed developer sessions. “This Mac” never
+silently switches providers; remote compatibility requires an explicitly selected
+HTTPS endpoint. Local authentication may be unavailable on newer macOS versions.
+See [authentication reliability and current limits](docs/AUTHENTICATION_RELIABILITY.md).
+
 Only install or modify apps you are authorized to use. Review [SECURITY.md](SECURITY.md) before reporting a sensitive issue.
 
 ## Credits and license
 
 Slip is an independent continuation built on the MIT-licensed foundations of [iLoader](https://github.com/nab138/iloader), [isideload](https://github.com/nab138/isideload), and [idevice](https://github.com/jkcoxson/idevice). It does not contain or redistribute Sideloadly code, assets, branding, or paid-service mechanisms.
 
-The source is covered by [LICENSE](LICENSE). Original iLoader branding terms remain documented in [LICENSE-BRANDING](LICENSE-BRANDING). Slip is not affiliated with Apple, Sideloadly, or the iLoader maintainers.
+The native interface includes modified window and glass UI code from **Droppy Code by Jordy Spruit (Droppy), https://getdroppycode.app** ([project website](https://getdroppycode.app)), Copyright (c) 2026 Jordy Spruit (Droppy). Slip's adaptation is modified and is not affiliated with or endorsed by Droppy or Jordy Spruit. Slip retains its own name, icon, and branding.
+
+The combined native application incorporating that UI is available under GNU AGPL version 3 with Droppy Code's additional attribution, origin, and trademark terms; see [native/LICENSE](native/LICENSE) and the preserved [third-party notices](native/THIRD_PARTY_NOTICES.md). The original MIT-licensed Slip/iLoader code and Rust core retain their existing copyright and [MIT license notices](LICENSE), including Copyright (c) 2025 nab138. This does not replace those original notices or claim ownership of upstream code.
+
+The current adaptations and build scripts are available in this local source checkout. Distributing a build requires providing its corresponding source and notices under the applicable license terms; this README does not claim that these local adaptations have been published online. The app bundles its license texts and displays attribution in About Slip.
+
+Original iLoader branding terms remain documented in [LICENSE-BRANDING](LICENSE-BRANDING). Slip is not affiliated with Apple, Sideloadly, or the iLoader maintainers.

@@ -1,24 +1,17 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) Jordy Spruit (Droppy). All rights reserved.
+// Droppy Code by Jordy Spruit (Droppy), https://getdroppycode.app
+// Adapted for Slip from DroppyCode/UI/Chrome/Chrome.swift and WindowChrome.swift.
+// Modified: neutral system appearance, accessibility, and Slip navigation.
+
+import AppKit
 import SwiftUI
 
 private struct SlipDimensionalSymbolModifier: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
     let strength: CGFloat
 
     func body(content: Content) -> some View {
-        content
-            .symbolRenderingMode(.hierarchical)
-            .shadow(
-                color: .white.opacity(colorScheme == .dark ? 0.20 : 0.48),
-                radius: 0.45 * strength,
-                x: -0.35 * strength,
-                y: -0.55 * strength
-            )
-            .shadow(
-                color: .black.opacity(colorScheme == .dark ? 0.48 : 0.24),
-                radius: 1.35 * strength,
-                x: 0.65 * strength,
-                y: 1.15 * strength
-            )
+        content.symbolRenderingMode(.hierarchical)
     }
 }
 
@@ -32,31 +25,21 @@ struct SlipDimensionalLabelStyle: LabelStyle {
     }
 }
 
-struct SlipBackdrop: View {
-    @Environment(\.colorScheme) private var colorScheme
-
+struct SlipWindowBackdrop: View {
+    @EnvironmentObject private var appearance: AppearanceController
     var body: some View {
-        ZStack {
-            Color(nsColor: .underPageBackgroundColor)
-            RadialGradient(
-                colors: [Color.accentColor.opacity(colorScheme == .dark ? 0.18 : 0.10), .clear],
-                center: .topTrailing,
-                startRadius: 20,
-                endRadius: 620
-            )
-            RadialGradient(
-                colors: [Color.cyan.opacity(colorScheme == .dark ? 0.08 : 0.05), .clear],
-                center: .bottomLeading,
-                startRadius: 10,
-                endRadius: 700
-            )
-            LinearGradient(
-                colors: [.white.opacity(colorScheme == .dark ? 0.015 : 0.16), .clear],
-                startPoint: .top,
-                endPoint: .center
-            )
-        }
-        .ignoresSafeArea()
+        WindowBackdrop(opacity: appearance.backdropOpacity)
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+struct SlipBackdrop: View {
+    var body: some View {
+        Color.clear
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -67,15 +50,13 @@ private struct SlipGlassSurfaceModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.glassEffect(
-                Glass.regular.tint(tint).interactive(interactive),
-                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            )
+        if interactive && cornerRadius >= 999 && tint == nil {
+            content.chromeGlassCapsule()
         } else {
-            content.background(
-                .regularMaterial,
-                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            content.floatingGlass(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous),
+                tint: tint,
+                isInteractive: interactive
             )
         }
     }
@@ -83,14 +64,16 @@ private struct SlipGlassSurfaceModifier: ViewModifier {
 
 struct SlipGlassGroupBoxStyle: GroupBoxStyle {
     func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Chrome.sectionHeaderSpacing) {
             configuration.label
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(.system(.body, weight: .semibold))
+                .foregroundStyle(Chrome.secondaryText)
             configuration.content
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: Chrome.cardCornerRadius, style: .continuous).fill(Chrome.overlay(0.03)))
         }
-        .padding(18)
-        .modifier(SlipGlassSurfaceModifier(tint: nil, interactive: false, cornerRadius: 24))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -105,11 +88,7 @@ struct SlipGlassContainer<Content: View>: View {
 
     @ViewBuilder
     var body: some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) { content }
-        } else {
-            content
-        }
+        GlassEffectContainer(spacing: spacing) { content }
     }
 }
 
@@ -125,7 +104,7 @@ struct SlipStatusPill: View {
             .foregroundStyle(tint)
             .padding(.horizontal, 11)
             .padding(.vertical, 7)
-            .slipGlassSurface(tint: tint.opacity(0.10), cornerRadius: 999)
+            .slipGlassSurface(cornerRadius: 999)
     }
 }
 
@@ -140,30 +119,21 @@ struct SlipSymbolTile: View {
             .slipDimensionalSymbol(strength: 1.15)
             .foregroundStyle(tint)
             .frame(width: size, height: size)
-            .slipGlassSurface(tint: tint.opacity(0.10), interactive: true, cornerRadius: size * 0.32)
-            .shadow(color: .black.opacity(0.18), radius: 4, y: 2.5)
+            .slipGlassSurface(cornerRadius: min(12, size * 0.28))
     }
 }
 
 private struct SlipGlassControlsModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.buttonStyle(.glass)
-        } else {
-            content.buttonStyle(.bordered)
-        }
+        content.buttonStyle(.glass)
     }
 }
 
 private struct SlipProminentButtonModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.buttonStyle(.glassProminent)
-        } else {
-            content.buttonStyle(.borderedProminent)
-        }
+        content.foregroundStyle(.white).buttonStyle(.glassProminent).tint(Chrome.accent)
     }
 }
 
@@ -171,7 +141,7 @@ extension View {
     func slipGlassSurface(
         tint: Color? = nil,
         interactive: Bool = false,
-        cornerRadius: CGFloat = 20
+        cornerRadius: CGFloat = 16
     ) -> some View {
         modifier(
             SlipGlassSurfaceModifier(

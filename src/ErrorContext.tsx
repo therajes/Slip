@@ -15,6 +15,7 @@ import {
   AppError,
   ErrorVariant,
   getErrorSuggestions,
+  getHumanMessage,
   parseLinkToken,
 } from "./errors";
 import { usePlatform } from "./PlatformContext";
@@ -29,9 +30,9 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({
   const { t } = useTranslation();
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<AppError | null>(null);
-  const [simpleError, setSimpleError] = useState<string | null>(null);
   const [moreDetailsOpen, setMoreDetailsOpen] = useState<boolean>(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+
   const [anisetteServer] = useStore<string>(
     "anisetteServer",
     "ani.sidestore.io",
@@ -47,17 +48,10 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     if (!error) {
-      setSimpleError(null);
       setSuggestions([]);
       return;
     }
     setSuggestions(getSuggestions(error.type));
-    // a little bit gross but it gets the job done.
-    let lines =
-      error?.message.split("\n").filter((line) => line.includes("●")) ?? [];
-    if (lines.length > 0) {
-      setSimpleError(lines[lines.length - 1].replace(/●\s*/, "").trim());
-    }
   }, [error, getSuggestions]);
 
   return (
@@ -98,29 +92,27 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({
               {t("common.copy_to_clipboard")}
             </button>
           </div>
-          {simpleError && <pre className="error-inner">{simpleError}</pre>}
-          {simpleError && (
-            <p
-              className="error-more-details"
-              role="button"
-              tabIndex={0}
-              onClick={() => setMoreDetailsOpen(!moreDetailsOpen)}
-            >
-              {t("common.more_details")} {moreDetailsOpen ? "▲" : "▼"}
-            </p>
+          {/* Human-readable description — always shown prominently */}
+          {error && (
+            <div className="error-human-message">
+              {getHumanMessage(error)}
+            </div>
           )}
-          {simpleError && !moreDetailsOpen && (
-            <pre className="error-inner error-details-measure">
+          {/* Technical chain — collapsed behind More Details */}
+          <p
+            className="error-more-details"
+            role="button"
+            tabIndex={0}
+            onClick={() => setMoreDetailsOpen(!moreDetailsOpen)}
+          >
+            {t("common.more_details")} {moreDetailsOpen ? "▲" : "▼"}
+          </p>
+          {moreDetailsOpen && (
+            <pre className="error-inner error-details">
               {error?.message.replace(/^\n+/, "")}
             </pre>
           )}
-          {(moreDetailsOpen || !simpleError) && (
-            <pre
-              className={`error-inner${simpleError ? " error-details" : ""}`}
-            >
-              {error?.message.replace(/^\n+/, "")}
-            </pre>
-          )}
+
           <div className="suggestions">
             {suggestions.length > 0 && (
               <h3>{t("error.suggestions_heading")}</h3>

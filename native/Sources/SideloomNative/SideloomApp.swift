@@ -1,69 +1,152 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Jordy Spruit (Droppy)
+// Droppy Code by Jordy Spruit (Droppy), https://getdroppycode.app
+// Modified by Slip: native sideloading interface, controls and compatibility.
+
 import AppKit
+import DroppyWindowBridge
 import SwiftUI
 
 @main
 struct SlipApp: App {
-    @StateObject private var model: AppModel
-    @StateObject private var appearance = AppearanceController()
-    private let workerMode: Bool
-
-    init() {
-        let workerMode = CommandLine.arguments.contains("--refresh-due")
-        self.workerMode = workerMode
-        _model = StateObject(wrappedValue: AppModel(startupTasks: !workerMode))
-        if workerMode {
-            NSApplication.shared.setActivationPolicy(.prohibited)
-        }
-    }
+    @NSApplicationDelegateAdaptor(SlipApplicationDelegate.self) private var applicationDelegate
 
     var body: some Scene {
-        WindowGroup {
-            if workerMode {
-                AutoRefreshWorkerView()
-            } else {
-                ContentView()
-                    .environmentObject(model)
-                    .environmentObject(appearance)
-                    .frame(minWidth: 1040, minHeight: 720)
-                    .onAppear { appearance.apply() }
-            }
+        Settings {
+            AppearanceSettingsView()
+                .environmentObject(applicationDelegate.appearance)
+                .frame(width: 760, height: 680)
         }
-        .windowStyle(.hiddenTitleBar)
-        .windowToolbarStyle(.unifiedCompact)
         .commands {
-            CommandGroup(after: .newItem) {
-                Button("Open IPA…") {
-                    NotificationCenter.default.post(name: .openIPA, object: nil)
-                }
-                .keyboardShortcut("o")
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { applicationDelegate.showSettings() }
+                    .keyboardShortcut(",")
+            }
+            CommandGroup(replacing: .newItem) {
+                Button("Show Slip") { applicationDelegate.showMainWindow() }
+                    .keyboardShortcut("n")
+                Button("Open IPA…") { applicationDelegate.openIPA() }
+                    .keyboardShortcut("o")
                 Button("Refresh Devices") {
-                    Task { await model.refreshDevices() }
+                    Task { await applicationDelegate.model.refreshDevices() }
                 }
                 .keyboardShortcut("r")
             }
         }
-
-        Settings {
-            AppearanceSettingsView()
-                .environmentObject(appearance)
-        }
     }
 }
 
-private struct AutoRefreshWorkerView: View {
-    var body: some View {
-        Color.clear
-            .frame(width: 1, height: 1)
-            .onAppear {
-                NSApplication.shared.windows.forEach { $0.orderOut(nil) }
-            }
-            .task {
+/// Droppy's display-cycle guarded AppKit window, with Slip's keyboard routing.
+final class SlipWindow: DCDisplayCycleGuardedWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+@MainActor
+final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    let model: AppModel
+    let appearance = AppearanceController()
+    private let workerMode: Bool
+    private var mainWindow: SlipWindow?
+    private var waitingToTerminate = false
+
+    override init() {
+        let isWorker = CommandLine.arguments.contains("--refresh-due")
+        workerMode = isWorker
+        model = AppModel(startupTasks: !isWorker)
+        super.init()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if workerMode {
+            NSApp.setActivationPolicy(.prohibited)
+            Task {
                 _ = await AutoRefreshWorker.runDue()
-                NSApplication.shared.terminate(nil)
+                NSApp.terminate(nil)
             }
+        } else {
+            NSApp.setActivationPolicy(.regular)
+            showMainWindow()
+        }
+    }
+
+    func showMainWindow() {
+        guard !workerMode else { return }
+        let window: SlipWindow
+        if let existing = mainWindow {
+            window = existing
+        } else {
+            let content = ContentView()
+                .environmentObject(model)
+                .environmentObject(appearance)
+                .frame(minWidth: 1040, minHeight: 680)
+            window = SlipWindowHost.make(size: NSSize(width: 1200, height: 800)) { content }
+            window.delegate = self
+            window.contentMinSize = NSSize(width: 1040, height: 680)
+            window.setFrameAutosaveName("SlipMainWindow")
+            if !window.setFrameUsingName("SlipMainWindow") { window.center() }
+            mainWindow = window
+        }
+        appearance.apply()
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        window.makeMain()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func showSettings() {
+        showMainWindow()
+        NotificationCenter.default.post(name: .showSlipSettings, object: nil)
+    }
+
+    func openIPA() {
+        showMainWindow()
+        NotificationCenter.default.post(name: .openIPA, object: nil)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showMainWindow()
+        return true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !workerMode else { return .terminateNow }
+        model.persistWorkspace()
+        guard model.workspaceIsBusy else { return .terminateNow }
+        if waitingToTerminate { return .terminateLater }
+        let cancellable = model.isAuthenticating || model.isDownloading || model.isRunningInstallQueue
+        let alert = NSAlert()
+        alert.messageText = "Slip is still working"
+        alert.informativeText = cancellable
+            ? "An installation, renewal or download is in progress. Keep Slip open, or stop the operation before quitting."
+            : "An IPA is being checked or exported. Slip can quit as soon as it finishes."
+        alert.addButton(withTitle: "Keep Slip Open")
+        alert.addButton(withTitle: cancellable ? "Stop and Quit" : "Quit When Finished")
+        guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
+        waitingToTerminate = true
+        if model.isDownloading { model.cancelDownload() }
+        if model.isRunningInstallQueue { model.stopInstallQueue() }
+        if model.isAuthenticating { model.cancelInstall() }
+        Task {
+            while model.workspaceIsBusy {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            waitingToTerminate = false
+            model.persistWorkspace()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        showMainWindow()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .slipOpenURL, object: urls)
+        }
     }
 }
 
 extension Notification.Name {
     static let openIPA = Notification.Name("SideloomOpenIPA")
+    static let slipOpenURL = Notification.Name("SlipOpenIncomingURL")
 }

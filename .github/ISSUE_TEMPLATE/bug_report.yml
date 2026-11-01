@@ -1,9 +1,9 @@
 name: Bug Report/Support
-description: Report a bug or get help with iloader
+description: Report a bug or get help with Slip
 body:
 - type: markdown
   attributes:
-    value: "Thank you for helping iloader improve! To help us track down the bug, please fill out the following information:"
+    value: "Thank you for helping Slip improve! To help us track down the bug, please fill out the following information:"
 - type: markdown
   attributes:
     value: "## Bug Information"
@@ -19,91 +19,84 @@ body:
   id: error
   attributes:
     label: Error message
-    description: "If this issue has an error message, click \"Copy to Clipboard\" in iloader and paste here. You can also upload screenshots, paste logs, or upload logfiles here."
-    placeholder: Paste error here
+    description: "If this issue has an error message or log output, copy it from the error dialog or the Activity timeline in Slip and paste here. You can also upload screenshots or log files."
+    placeholder: Paste error or activity log here
 - type: checkboxes
   id: suggestions
   attributes:
-    label: "Please read and follow any suggestions iloader gives before making this issue."
-    description: iloader gives intelligent suggestions for many common errors. If you open an issue about one of these errors and did not try the suggestions, you will simply be told to follow the suggestions.
+    label: "Please read and follow any suggestions Slip gives before making this issue."
+    description: Slip provides preflight diagnostics and intelligent suggestions for common signing, device connection, and profile errors. If you open an issue without checking these suggestions, you will simply be directed to follow them.
     options:
-      - label: I followed ALL suggestions given by iloader
+      - label: I followed ALL suggestions given by Slip
         required: true
 - type: markdown
   attributes:
-    value: "## Desktop Information"
+    value: "## Mac Environment"
 - type: input
   id: os
   attributes:
-    label: Computer OS
-    description: What operating system is the computer you're running iloader on using and what version is it? (Windows 11, Ubuntu, etc)
-    placeholder: Windows 11
+    label: macOS Version
+    description: What version of macOS is your Mac running? (e.g. macOS 26.3, macOS 27.0)
+    placeholder: macOS 26.3
   validations:
     required: true
 - type: input
   id: version
   attributes:
-    label: iloader version
-    description: What version of iloader are you experiencing this problem with?
-    placeholder: v2.0.0
+    label: Slip version
+    description: What version of Slip are you experiencing this problem with?
+    placeholder: v2.4.0
   validations:
     required: true
 - type: dropdown
   id: package
   attributes:
-    label: What distribution of iloader did you download?
-    description: "Most Windows users use `.msi`. If unsure, check the extension of the file you downloaded to install iloader."
+    label: How was Slip installed?
+    description: "Slip is distributed as an official release disk image (.dmg) or built from source."
     options:
-      - .msi (Windows)
-      - .exe (Windows)
-      - .dmg (macOS)
-      - .app (macOS)
-      - .deb (Linux)
-      - .rpm (Linux)
-      - .AppImage(Linux)
-      - AUR (Linux) (Unofficial)
-      - Homebrew (Linux) (Unofficial)
+      - .dmg release (GitHub Releases)
+      - Built from source (Xcode / SwiftPM)
       - Other (Specify in additional info)
   validations:
     required: true
 - type: checkboxes
   id: computerceritifcation
   attributes:
-    label: Please certify that if you use Windows, you have iTunes or Apple Mobile Devices installed, or if you use Linux, you have usbmuxd installed.
-    description: If you are on macOS, you do not need any additional software.
+    label: Mac environment certification
+    description: Slip is a native macOS application designed for Apple silicon Macs running macOS 26 or newer. macOS handles device communication natively without third-party drivers.
     options:
-      - label: I certify the above is true
+      - label: I certify that I am running Slip natively on macOS 26+ and my iPhone is trusted in Finder
         required: true
 - type: markdown
   attributes:
-    value: "## iPhone/iPad Information"
+    value: "## iPhone Information"
 - type: input
   id: ios
   attributes:
     label: iOS Version
-    description: What iOS version is your iPhone/iPad running? If you are on a developer beta, please include that
+    description: What iOS version is your iPhone running? If you are on a developer beta, please include that
     placeholder: "26.3"
   validations:
     required: true
 - type: input
   id: phone
   attributes:
-    label: Phone model
-    description: What kind of iPhone/iPad is this?
-    placeholder: iPhone 16
+    label: iPhone model
+    description: What model of iPhone is connected? (e.g. iPhone 16 Pro, iPhone 15)
+    placeholder: iPhone 16 Pro
   validations:
     required: true
 - type: checkboxes
   id: phonecertification
   attributes:
-    label: "Please certify the following about your iPhone/iPad:"
+    label: "Please certify the following about your iPhone:"
     description: If any of these things are not true, please make sure they are and try again before opening this issue.
     options:
-      - label: My phone is in developer mode
+      - label: My iPhone has Developer Mode enabled
         required: true
-      - label: My phone has a passcode set
+      - label: My iPhone has a passcode set
         required: true
-      - label: My phone is connected to my computer over USB
+      - label: My iPhone is connected via USB or paired on the local Wi-Fi network
         required: true
 - type: markdown
   attributes:
@@ -122,7 +115,7 @@ body:
   id: 2fa
   attributes:
     label: Two-factor auth (2FA) type 
-    description: "Most accounts use \"Trusted Device\" authentication, meaning signing in on a new device will send a notification to your phone to allow the sign in."
+    description: "Most accounts use \"Trusted Device\" authentication, meaning signing in on a new device will send a notification to your iPhone to allow the sign in."
     options:
       - Trusted Device
       - SMS

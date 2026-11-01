@@ -154,13 +154,24 @@ export function IpaWorkbench({
       .onDragDropEvent((event) => {
         if (event.payload.type !== "drop") return;
         const ipa = event.payload.paths.find((path) => path.toLowerCase().endsWith(".ipa"));
-        if (ipa) void loadIpa(ipa);
+        if (!ipa) {
+          if (event.payload.paths.length > 0) {
+            toast.error("Only IPA files can be dropped here.");
+          }
+          return;
+        }
+        if (inspecting) {
+          toast.warning("Still reading the previous IPA — drop it again in a moment.");
+          return;
+        }
+        void loadIpa(ipa);
       })
       .then((fn) => {
         unlisten = fn;
       });
     return () => unlisten?.();
-  }, [loadIpa]);
+  }, [loadIpa, inspecting]);
+
 
   const appIdCost = useMemo(
     () => 1 + (info?.extensions.length ?? 0) - removedExtensions.size,

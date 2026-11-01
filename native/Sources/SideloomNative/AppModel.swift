@@ -1,11 +1,15 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 
 @MainActor
 final class AppModel: ObservableObject {
     @Published var devices: [DeviceInfo] = []
-    @Published var selectedDevice: DeviceInfo?
+    @Published var selectedDevice: DeviceInfo? {
+        didSet { if let selectedDevice { desiredWorkspaceDeviceUDID = selectedDevice.udid } }
+    }
+    var desiredWorkspaceDeviceUDID: String?
     @Published var ipa: IpaInfo?
     @Published var ipaIconURL: URL?
     @Published var customName = ""
@@ -27,39 +31,143 @@ final class AppModel: ObservableObject {
     @Published var isEnablingWiFi = false
     @Published var isExporting = false
     @Published var isDownloading = false
+    @Published var downloadProgress: IPADownloadProgress?
     @Published var currentStage = "Ready"
     @Published var overallProgress = 0.0
     @Published var activity: [String] = []
     @Published var errorMessage: String?
     @Published var showTwoFactor = false
+    @Published var twoFactorDetails: TwoFactorDetails?
+    @Published var verificationCode = ""
+    @Published var authentication = AuthenticationFlow()
+    @Published var isSubmittingTwoFactor = false
+    @Published var twoFactorError: String?
+    @Published var twoFactorStatus = ""
     @Published var certificates: [CertificateInfo] = []
     @Published var showCertificates = false
+    @Published var showAppIDExhausted = false
     @Published var managedInstallations: [ManagedInstallation] = []
+    @Published var managedInstallationsError: String?
     @Published var installedApps: [InstalledAppInfo] = []
     @Published var isLoadingInstalledApps = false
     @Published var isUninstallingApps = false
     @Published var inspectionDuration: TimeInterval?
+    @Published var ipaPreparationNotice: String?
     @Published var lastInstallDuration: TimeInterval?
     @Published var refreshingManagedIDs: Set<String> = []
+    @Published var activeRefreshID: String?
+    private var refreshQueueCancelled = false
     @Published var hideSensitiveInfo = UserDefaults.standard.bool(forKey: "hideSensitiveInfo") {
         didSet { UserDefaults.standard.set(hideSensitiveInfo, forKey: "hideSensitiveInfo") }
     }
 
-    let core = CoreClient()
-    let anisetteServer = "ani.sidestore.io"
+    @Published var accountCertificates: [CertificateInfo] = []
+    @Published var accountAppIDs: [AppleAppID] = []
+    @Published var appIDQuota: AppIDQuotaInfo?
+    @Published var certificateRevocationNotice: String?
+    @Published var resourcesAccount = ""
+    @Published var isManagingAccount = false
+    @Published var resourcesError: String?
+    @Published var resourcesLoaded = false
+    @Published var resourcesUpdatedAt: Date?
+    @Published var hostIdentity: HostIdentityInfo?
+    @Published var isLoadingHostIdentity = false
+    @Published var hostIdentityError: String?
+    @Published var authenticationNotice: String?
+    private var operationCancelled = false
+    private var inspectionGeneration = UUID()
+    @Published var library = AppLibraryState()
+    @Published var libraryNotice: String?
+    @Published var isImportingLibrary = false
+    @Published var isRestoringWorkspace = false
+    @Published var isRunningInstallQueue = false
+    @Published var activeQueueID: UUID?
+    @Published var reviewingQueueID: UUID?
+    var queueCancelled = false
+    var activeLibraryID: UUID?
+    var activeSourceStamp: IPAFileStamp?
+    let libraryRepository: AppLibraryRepository?
+    var libraryPersistence: AnyCancellable?
+
+    var isAuthenticating: Bool { isLoggingIn || isInstalling || isManagingAccount }
+    var showInlineTwoFactor: Bool { authentication.showsChallenge }
+    var canRespondToTwoFactor: Bool {
+        isLoggingIn ? authentication.canRespondToChallenge : (showTwoFactor && !isSubmittingTwoFactor)
+    }
+    var canSubmitTwoFactor: Bool {
+        canRespondToTwoFactor && twoFactorDetails?.unknown != true
+    }
+
+    @Published var isLoggingIn = false
+    @Published var loginStage = ""
+
+    let core: CoreClient
+    private var downloadTask: Task<URL, Error>?
+    private var downloadGeneration: UUID?
+    @Published var authenticationMode = UserDefaults.standard.string(forKey: "authenticationMode") ?? "local" {
+        didSet { UserDefaults.standard.set(authenticationMode, forKey: "authenticationMode") }
+    }
+    @Published var anisetteServer = UserDefaults.standard.string(forKey: "anisetteServer") ?? "" {
+        didSet { UserDefaults.standard.set(anisetteServer, forKey: "anisetteServer") }
+    }
     private var stageProgress: [String: Double] = [:]
     private var installStartedAt: Date?
+    private var activeOperationHandle: OperationCoordinator.OperationHandle?
 
-    init(startupTasks: Bool = true) {
-        reloadAccounts()
-        reloadManagedInstallations()
+    var currentlyRefreshingAppName: String? {
+        if let local = activeRefreshID ?? managedInstallations.first(where: { refreshingManagedIDs.contains($0.id) })?.id {
+            if let match = managedInstallations.first(where: { $0.id == local }) {
+                return match.appName
+            }
+            return "an app"
+        }
+        return OperationCoordinator.currentlyRefreshingAppName()
+    }
+
+    init(startupTasks: Bool = true, core: CoreClient = CoreClient(), loadSavedState: Bool = true,
+         libraryRepository: AppLibraryRepository? = nil) {
+        self.core = core
+        self.libraryRepository = libraryRepository ?? (loadSavedState && startupTasks ? .standard : nil)
+        if loadSavedState { reloadAccounts(); reloadManagedInstallations() }
+        if let repository = self.libraryRepository {
+            do { library = try repository.load(); library.recoverInterruptedQueue() }
+            catch { libraryNotice = "Slip couldn’t read your library. The saved file has been preserved." }
+            libraryPersistence = objectWillChange.debounce(for: .milliseconds(350), scheduler: RunLoop.main)
+                .sink { [weak self] in self?.persistWorkspace() }
+        }
         if startupTasks {
             do {
                 try AutoRefreshScheduler.installIfAppropriate()
             } catch {
                 appendActivity("Auto Refresh scheduler: \(error.localizedDescription)")
             }
-            Task { await refreshDevices() }
+            Task {
+                if ipa == nil, !isInspecting, let id = library.activeID { await openLibraryWorkspace(id) }
+                await refreshDevices()
+            }
+        }
+    }
+
+    private func recordAuthenticationWarning(_ event: CoreEvent) {
+        let message = event.message ?? "Signed in, but the developer session could not be saved. Apple may ask you to sign in again next time."
+        if authenticationNotice != message { appendActivity(message) }
+        authenticationNotice = message
+    }
+
+    func loadHostIdentity() async {
+        guard !isLoadingHostIdentity else { return }
+        isLoadingHostIdentity = true
+        hostIdentityError = nil
+        defer { isLoadingHostIdentity = false }
+        do {
+            let event = try await core.run(["host-identity"])
+            guard event.type == "hostIdentity", let identity = event.hostIdentity else {
+                throw SideloomError.message("Slip could not read this Mac's identity. Try refreshing.")
+            }
+            hostIdentity = identity
+        } catch {
+            hostIdentity = nil
+            hostIdentityError = error.localizedDescription
         }
     }
 
@@ -71,41 +179,182 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func saveAccount(email: String, password: String, profileName: String = "", profileImageURL: URL? = nil) -> Bool {
+    func signInAccount(email: String, password: String, profileName: String = "", profileImageURL: URL? = nil) async -> Bool {
+        // The first action claims the operation synchronously before starting any async work.
+        guard !workspaceIsBusy else { return false }
+        operationCancelled = false
+        authenticationNotice = nil
+        errorMessage = nil
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        authentication.begin(accountEmail: normalized)
+        guard normalized.contains("@"), !password.isEmpty else {
+            authentication.fail(message: "Enter your Apple Account email and password.")
+            return false
+        }
+        isLoggingIn = true
+        showTwoFactor = false
+        twoFactorDetails = nil
+        twoFactorError = nil
+        isSubmittingTwoFactor = false
+        verificationCode = ""
+        loginStage = authentication.message
+        defer {
+            isLoggingIn = false
+            showTwoFactor = false
+            verificationCode = ""
+            isSubmittingTwoFactor = false
+        }
+
         do {
-            let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard normalized.contains("@"), !password.isEmpty else {
-                throw SideloomError.message("Enter a valid Apple Account and password.")
-            }
-            try KeychainStore.save(account: normalized, password: password)
-            try AccountProfileStore.upsert(
+            let storageURL = try accountStorageURL(for: normalized)
+            let request = LoginAccountRequest(
                 email: normalized,
-                displayName: profileName,
-                imageURL: profileImageURL
+                password: password,
+                anisetteServer: anisetteServer,
+                storagePath: storageURL.path,
+                authenticationMode: authenticationMode
             )
-            reloadAccounts()
-            selectedAccount = normalized
-            UserDefaults.standard.set(normalized, forKey: "selectedAccount")
-            appendActivity("Saved \(normalized) in macOS Keychain")
-            return true
+            let stream = try core.loginStream(request: request)
+            var verifiedProfileName = profileName
+
+            for try await event in stream {
+                if operationCancelled { return false }
+                switch event.type {
+                case "authenticationState":
+                    receiveAuthenticationState(event)
+                case "authenticationWarning":
+                    recordAuthenticationWarning(event)
+                case "progress":
+                    authentication.updateMessage(event.message ?? "Signing in to Apple…")
+                    loginStage = authentication.message
+                case "twoFactorRequired":
+                    receiveTwoFactorChallenge(event.details)
+                    authentication.receiveChallenge(event.details)
+                    loginStage = authentication.message
+                    appendActivity("Apple requested a verification code")
+                case "accountProfile":
+                    if let name = event.accountName, !name.isEmpty { verifiedProfileName = name }
+                case "completed":
+                    try KeychainStore.save(account: normalized, password: password)
+                    try AccountProfileStore.upsert(email: normalized, displayName: verifiedProfileName, imageURL: profileImageURL)
+                    reloadAccounts()
+                    selectedAccount = normalized
+                    UserDefaults.standard.set(normalized, forKey: "selectedAccount")
+                    authentication.complete()
+                    loginStage = authentication.message
+                    appendActivity("Signed in and saved the Apple Account to macOS Keychain")
+                    return true
+                case "error":
+                    verificationCode = ""
+                    let raw = event.message ?? "Apple sign-in could not finish."
+                    if raw.contains("1100") || raw.lowercased().contains("session has expired") || raw.lowercased().contains("session expired") {
+                        clearDeveloperSession(for: normalized)
+                    }
+                    let message = friendlyMessage(raw)
+                    authentication.fail(message: message, code: event.code, retryable: event.retryable, failedStage: event.failedStage ?? event.stage)
+                    loginStage = authentication.message
+                    appendActivity("Sign-in failed: \(message)")
+                    return false
+                default: break
+                }
+            }
+            if operationCancelled { return false }
+            let message = authentication.errorMessage ?? "Apple sign-in ended before the developer session was ready. Try signing in again."
+            authentication.fail(message: message, retryable: true)
+            appendActivity("Sign-in incomplete: \(message)")
+            return false
         } catch {
-            errorMessage = error.localizedDescription
+            if operationCancelled { return false }
+            let message = authentication.errorMessage ?? friendlyMessage(for: error)
+            authentication.fail(message: message)
+            appendActivity("Sign-in error: \(message)")
             return false
         }
     }
 
-    func deleteAccount(_ email: String) {
-        do {
-            try KeychainStore.delete(account: email)
-            try? AccountProfileStore.delete(email)
-            reloadAccounts()
-            appendActivity("Removed \(email) from macOS Keychain")
-        } catch {
-            errorMessage = error.localizedDescription
+    private func receiveAuthenticationState(_ event: CoreEvent) {
+        if isLoggingIn {
+            authentication.receiveState(stage: event.stage, message: event.message, provider: event.provider,
+                                        code: event.code, retryable: event.retryable, failedStage: event.failedStage)
+            loginStage = authentication.message
+        }
+        if showTwoFactor, let message = event.message { twoFactorStatus = message }
+        switch event.stage {
+        case "verifyingCode": isSubmittingTwoFactor = true
+        case "signedIn":
+            if !isLoggingIn { showTwoFactor = false }
+            isSubmittingTwoFactor = false
+        default: break
         }
     }
 
+    private func receiveTwoFactorChallenge(_ details: TwoFactorDetails?) {
+        twoFactorDetails = details
+        twoFactorError = details?.lastError
+        isSubmittingTwoFactor = false
+        verificationCode = ""
+        showTwoFactor = true
+    }
+
+    func deleteAccount(_ email: String) {
+        guard !workspaceIsBusy else {
+            errorMessage = "Wait for the current Apple Account operation before removing an account."
+            return
+        }
+        resourcesLoaded = false
+        resourcesUpdatedAt = nil
+        accountCertificates = []
+        accountAppIDs = []
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.lowercased()
+        do {
+            clearDeveloperSession(for: email)
+            try KeychainStore.delete(account: email)
+            try? AccountProfileStore.delete(email)
+            try? AccountProfileStore.delete(normalized)
+
+            // Completely wipe cached session tokens, anisette state, and developer keys in Core
+            let fileManager = FileManager.default
+            if let storageURL = try? accountStorageURL(for: normalized) {
+                try? fileManager.removeItem(at: storageURL)
+            }
+            let normalizedForStorage = normalized.replacingOccurrences(of: "@", with: "_at_").replacingOccurrences(of: ".", with: "_")
+            if let support = try? fileManager.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: false
+            ).appending(path: "app.sideloom.native/Core/\(normalizedForStorage)", directoryHint: .isDirectory) {
+                try? fileManager.removeItem(at: support)
+            }
+
+            // Remove any auto-refresh schedules belonging to this account so background workers don't repeatedly fail
+            try? AutoRefreshStore.update { installations in
+                installations.removeAll { $0.account.caseInsensitiveCompare(normalized) == .orderedSame }
+            }
+            reloadManagedInstallations()
+
+            reloadAccounts()
+            if selectedAccount.caseInsensitiveCompare(normalized) == .orderedSame {
+                selectedAccount = accounts.first ?? ""
+                UserDefaults.standard.set(selectedAccount, forKey: "selectedAccount")
+            }
+            appendActivity("Removed \(email) from macOS Keychain and cleared cached session data")
+        } catch {
+            errorMessage = friendlyMessage(for: error)
+        }
+    }
+
+
     func chooseAccount(_ email: String) {
+        guard !isAuthenticating else { return }
+        appIDQuota = nil
+        certificateRevocationNotice = nil
+        accountCertificates = []
+        accountAppIDs = []
+        resourcesLoaded = false
+        resourcesUpdatedAt = nil
+        resourcesError = nil
         selectedAccount = email
         UserDefaults.standard.set(email, forKey: "selectedAccount")
     }
@@ -128,6 +377,125 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func manageAccount(command: String = "account-resources", serialNumber: String? = nil,
+                       serialNumbers: [String]? = nil, expectedSerialNumbers: [String]? = nil, appIdId: String? = nil) async {
+        guard !workspaceIsBusy, !selectedAccount.isEmpty else { return }
+        let email = selectedAccount
+        isManagingAccount = true
+        authentication = AuthenticationFlow()
+        certificateRevocationNotice = nil
+        appIDQuota = nil
+        resourcesLoaded = false
+        accountCertificates = []
+        accountAppIDs = []
+        operationCancelled = false
+        authenticationNotice = nil
+        resourcesError = nil
+        errorMessage = nil
+        defer {
+            isManagingAccount = false
+            showTwoFactor = false
+            verificationCode = ""
+            isSubmittingTwoFactor = false
+            twoFactorError = nil
+        }
+        do {
+            let request = AccountResourcesRequest(
+                email: email,
+                password: try KeychainStore.password(for: email),
+                anisetteServer: anisetteServer,
+                storagePath: try accountStorageURL(for: email).path,
+                serialNumber: serialNumber,
+                serialNumbers: serialNumbers,
+                expectedSerialNumbers: expectedSerialNumbers,
+                appIdId: appIdId,
+                authenticationMode: authenticationMode
+            )
+            let commands = command == "account-resources" ? [command] : [command, "account-resources"]
+            for action in commands {
+                var completed = false
+                var loadedResources: CoreEvent?
+                let stream = try core.authenticatedStream(command: action, request: request)
+                for try await event in stream {
+                    if operationCancelled { return }
+                    switch event.type {
+                    case "authenticationState":
+                        receiveAuthenticationState(event)
+                    case "authenticationWarning":
+                        recordAuthenticationWarning(event)
+                    case "twoFactorRequired":
+                        receiveTwoFactorChallenge(event.details)
+                    case "accountResources":
+                        loadedResources = event
+                    case "appIdQuota":
+                        recordAppIDQuota(event)
+                    case "certificateRevocationResult":
+                        let message = event.message ?? "Some certificates could not be revoked. Refresh the list to review the result."
+                        certificateRevocationNotice = message
+                        appendActivity(message)
+                    case "completed":
+                        completed = true
+                        showTwoFactor = false
+                        if action == "revoke-certificates", let count = event.revokedCount {
+                            let message = event.message ?? "Revoked \(count) development certificate\(count == 1 ? "" : "s")."
+                            certificateRevocationNotice = message
+                            appendActivity(message)
+                        }
+                    case "error":
+                        throw SideloomError.message(event.message ?? "Apple could not complete this account operation.")
+                    default: break
+                    }
+                }
+                if operationCancelled { return }
+                guard completed else { throw SideloomError.message("Apple did not complete the account operation. Refresh and try again.") }
+                if action == "account-resources" {
+                    guard let event = loadedResources else {
+                        throw SideloomError.message("Apple returned no certificate or App ID list. Refresh to try again.")
+                    }
+                    resourcesAccount = email
+                    accountCertificates = event.certificates ?? []
+                    accountAppIDs = event.appIds ?? []
+                    resourcesLoaded = true
+                    resourcesUpdatedAt = Date()
+                }
+                appendActivity("Apple Account operation completed: \(action)")
+            }
+        } catch {
+            if operationCancelled { return }
+            let message = friendlyMessage(for: error)
+            resourcesError = message
+            errorMessage = message
+            appendActivity("Account resources: \(message)")
+        }
+    }
+
+    func revokeAccountCertificates(_ plan: CertificateRevocationPlan, for account: String) async {
+        guard !workspaceIsBusy else { return }
+        guard selectedAccount == account, resourcesAccount == account, resourcesLoaded,
+              CertificateRevocationPlan.availableSerialNumbers(in: accountCertificates) == plan.expectedSerialNumbers else {
+            resourcesError = "The account or certificate list changed. Refresh and review the certificates before revoking them."
+            return
+        }
+        await manageAccount(command: "revoke-certificates", serialNumbers: plan.serialNumbers,
+                            expectedSerialNumbers: plan.expectedSerialNumbers)
+        // A batch can partially succeed. Fetch Apple's current list without repeating
+        // the destructive request, then preserve its result for the user to review.
+        if let failure = resourcesError, !operationCancelled {
+            let notice = certificateRevocationNotice
+            await manageAccount()
+            resourcesError = failure
+            certificateRevocationNotice = notice
+            errorMessage = failure
+        }
+    }
+
+    private func recordAppIDQuota(_ event: CoreEvent) {
+        appIDQuota = AppIDQuotaInfo(used: event.used.flatMap { $0 >= 0 ? $0 : nil },
+                                   remaining: event.remaining.flatMap { $0 >= 0 ? $0 : nil },
+                                   limit: event.limit.flatMap { $0 > 0 ? $0 : nil }, message: event.message)
+        if let message = event.message { appendActivity(message) }
+    }
+
     func refreshDevices() async {
         guard !isRefreshing else { return }
         isRefreshing = true
@@ -139,9 +507,11 @@ final class AppModel: ObservableObject {
                let replacement = devices.first(where: { $0.identity == current.identity }) {
                 selectedDevice = replacement
             } else {
-                selectedDevice = devices.first(where: {
-                    $0.connectionType.caseInsensitiveCompare("USB") == .orderedSame
-                }) ?? devices.first
+                if let desiredWorkspaceDeviceUDID {
+                    selectedDevice = devices.first(where: { $0.udid == desiredWorkspaceDeviceUDID })
+                } else {
+                    selectedDevice = devices.first(where: { $0.connectionType.caseInsensitiveCompare("USB") == .orderedSame }) ?? devices.first
+                }
             }
             if let errors = event.errors, !errors.isEmpty {
                 appendActivity(errors.joined(separator: " • "))
@@ -153,96 +523,125 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func loadIPA(_ url: URL) async {
-        guard url.pathExtension.lowercased() == "ipa" else {
-            errorMessage = "Choose a valid .ipa file."
-            return
+    @discardableResult
+    func loadIPA(_ url: URL, downloadID: UUID? = nil, expectedBundleID: String? = nil, queueID: UUID? = nil) async -> Bool {
+        guard !isInstalling, !isExporting, !isDownloading || downloadID == downloadGeneration,
+              !isRunningInstallQueue || (queueID != nil && queueID == activeQueueID) else {
+            errorMessage = "Wait for the current IPA operation or cancel its download first."
+            return false
         }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let resolved = url.resolvingSymlinksInPath()
+        guard resolved.pathExtension.lowercased() == "ipa" else {
+            errorMessage = "Choose a valid .ipa file."
+            return false
+        }
+        persistWorkspace()
+        let generation = UUID()
+        inspectionGeneration = generation
         isInspecting = true
-        let startedAt = Date()
-        discardIPAPreview()
-        defer { isInspecting = false }
+        errorMessage = nil
+        let started = Date()
+        defer { if inspectionGeneration == generation { isInspecting = false } }
         do {
-            let event = try await core.run(["inspect", url.path])
-            guard let info = event.ipa else {
-                throw SideloomError.message("The IPA could not be inspected.")
+            let event = try await core.run(["inspect", resolved.path])
+            guard inspectionGeneration == generation, !Task.isCancelled,
+                  downloadID == nil || downloadID == downloadGeneration else { return false }
+            guard let info = event.ipa else { throw SideloomError.message("The IPA could not be inspected.") }
+            if let expectedBundleID, info.bundleId != expectedBundleID {
+                throw SideloomError.message("This IPA belongs to \(info.appName), not the app being recovered. Choose the original app’s IPA.")
             }
-            ipa = info
-            customName = ""
-            customBundleID = ""
-            customIconURL = nil
-            removedExtensions = Set(info.extensions.map(\.path))
-            minimumOSVersion = ""
-            removeSupportedDevices = false
-            enableFileSharing = false
-            plistOverrides = []
-            await loadIPAPreview(for: info)
-            inspectionDuration = Date().timeIntervalSince(startedAt)
-            appendActivity("Loaded \(info.appName) \(info.version) in \(inspectionDuration?.formatted(.number.precision(.fractionLength(2))) ?? "0")s")
-        } catch {
-            ipa = nil
+            // Commit only a validated archive; a failed replacement keeps the
+            // previous IPA, icon and all of the user's customization choices.
             discardIPAPreview()
+            ipa = info
+            activeLibraryID = library.apps.first(where: { $0.ipa.path == info.path })?.id ?? UUID()
+            activeSourceStamp = IPAFileStamp.read(info.path)
+            reviewingQueueID = nil
+            resetCustomizations()
+            ipaPreparationNotice = nil
+            inspectionDuration = Date().timeIntervalSince(started)
+            currentStage = "Ready"
+            appendActivity("Loaded \(info.appName) \(info.version) in \(inspectionDuration?.formatted(.number.precision(.fractionLength(2))) ?? "0")s")
+            Task { await loadIPAPreview(for: info) }
+            return true
+        } catch {
+            guard inspectionGeneration == generation, !Task.isCancelled,
+                  downloadID == nil || downloadID == downloadGeneration else { return false }
             errorMessage = friendlyMessage(for: error)
+            currentStage = "Import failed"
+            return false
         }
     }
 
     func downloadIPA(from input: String) async {
-        guard !isDownloading else { return }
-        guard let url = URL(string: input.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http" else {
-            errorMessage = "Enter a valid HTTP or HTTPS IPA URL."
+        guard !workspaceIsBusy else {
+            errorMessage = "Wait for the current IPA operation to finish."
             return
         }
+        guard let url = IPADownloadPolicy.url(input) else {
+            errorMessage = IPADownloadError.invalidURL.localizedDescription
+            return
+        }
+        let generation = UUID()
+        downloadGeneration = generation
         isDownloading = true
+        downloadProgress = IPADownloadProgress()
         currentStage = "Downloading IPA"
-        defer { isDownloading = false }
-
-        var lastError: Error?
-        for attempt in 1...3 {
-            do {
-                appendActivity("Downloading IPA (attempt \(attempt) of 3)")
-                let (temporaryURL, response) = try await URLSession.shared.download(from: url)
-                if let response = response as? HTTPURLResponse,
-                   !(200...299).contains(response.statusCode) {
-                    throw SideloomError.message("Download failed with HTTP \(response.statusCode).")
-                }
-                let support = try FileManager.default.url(
-                    for: .applicationSupportDirectory,
-                    in: .userDomainMask,
-                    appropriateFor: nil,
-                    create: true
-                ).appending(path: "app.sideloom.native/Imports", directoryHint: .isDirectory)
-                try FileManager.default.createDirectory(
-                    at: support,
-                    withIntermediateDirectories: true,
-                    attributes: [.posixPermissions: 0o700]
-                )
-                let suggested = url.lastPathComponent.lowercased().hasSuffix(".ipa")
-                    ? url.lastPathComponent
-                    : "Downloaded.ipa"
-                let destination = support.appending(
-                    path: "\(UUID().uuidString)-\(suggested)",
-                    directoryHint: .notDirectory
-                )
-                try FileManager.default.moveItem(at: temporaryURL, to: destination)
-                currentStage = "Inspecting download"
-                await loadIPA(destination)
-                if ipa?.path == destination.path {
-                    appendActivity("Downloaded and verified \(destination.lastPathComponent)")
-                    return
-                }
-                throw SideloomError.message("The downloaded file is not a valid IPA.")
-            } catch {
-                lastError = error
-                if attempt < 3 {
-                    try? await Task.sleep(for: .seconds(attempt))
+        errorMessage = nil
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appending(path: "app.sideloom.native/Imports", directoryHint: .isDirectory)
+        let task = Task { [weak self] in
+            try await IPAURLDownloadService().download(url, to: directory) { [weak self] progress in
+                Task { @MainActor [weak self] in
+                    guard let self, self.downloadGeneration == generation else { return }
+                    self.downloadProgress = progress
                 }
             }
         }
-        currentStage = "Download failed"
-        errorMessage = lastError?.localizedDescription ?? "The IPA could not be downloaded."
-        appendActivity("Download failed after three attempts")
+        downloadTask = task
+        defer {
+            if downloadGeneration == generation {
+                isDownloading = false
+                downloadProgress = nil
+                downloadTask = nil
+                downloadGeneration = nil
+            }
+        }
+        do {
+            let destination = try await task.value
+            guard downloadGeneration == generation else {
+                try? FileManager.default.removeItem(at: destination)
+                return
+            }
+            currentStage = "Checking downloaded IPA"
+            let loaded = await loadIPA(destination, downloadID: generation)
+            if loaded { appendActivity("Downloaded and verified IPA") }
+            else if ipa?.path != destination.path { try? FileManager.default.removeItem(at: destination) }
+        } catch {
+            guard downloadGeneration == generation else { return }
+            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                currentStage = "Download cancelled"
+            } else {
+                currentStage = "Download failed"
+                errorMessage = IPADownloadPolicy.message(error)
+                appendActivity("IPA download failed: \(errorMessage ?? "Connection failed")")
+            }
+        }
+    }
+
+    func cancelDownload() {
+        guard isDownloading else { return }
+        downloadGeneration = nil
+        downloadTask?.cancel()
+        downloadTask = nil
+        downloadProgress = nil
+        isDownloading = false
+        inspectionGeneration = UUID()
+        isInspecting = false
+        currentStage = "Download cancelled"
+        appendActivity("IPA download cancelled")
     }
 
     func enableWiFiConnection() async {
@@ -292,21 +691,94 @@ final class AppModel: ObservableObject {
         appendActivity("Copied \(bundleIDs.count) bundle ID\(bundleIDs.count == 1 ? "" : "s")")
     }
 
-    func refreshManagedInstallations(_ ids: Set<String>) {
-        let available = ids.subtracting(refreshingManagedIDs)
-        guard !available.isEmpty else { return }
-        refreshingManagedIDs.formUnion(available)
+    func refreshManagedInstallations(_ ids: Set<String>, respectPaused: Bool = false) {
+        guard !workspaceIsBusy, refreshingManagedIDs.isEmpty else {
+            errorMessage = "Finish the current operation before refreshing apps."
+            return
+        }
+        let queued = managedInstallations.filter { ids.contains($0.id) }.map(\.id)
+        guard !queued.isEmpty else { return }
+        refreshQueueCancelled = false
+        refreshingManagedIDs = Set(queued)
         Task {
-            let result = await AutoRefreshWorker.runDue(forceIDs: available)
-            refreshingManagedIDs.subtract(available)
+            var completed = 0
+            for id in queued {
+                guard !refreshQueueCancelled else { break }
+                guard let latest = AutoRefreshStore.load().first(where: { $0.id == id }),
+                      !respectPaused || latest.enabled else { refreshingManagedIDs.remove(id); continue }
+                if await performManagedRefresh(id) { completed += 1 }
+                else { break } // A failure or cancellation must not repeat sign-in across the queue.
+            }
+            refreshingManagedIDs.removeAll()
+            activeRefreshID = nil
             reloadManagedInstallations()
-            appendActivity("Selected refresh finished: \(result.succeeded)/\(result.attempted) succeeded")
+            appendActivity("Refresh finished: \(completed) of \(queued.count) renewed")
+        }
+    }
+
+    private func performManagedRefresh(_ id: String) async -> Bool {
+        guard let item = AutoRefreshStore.load().first(where: { $0.id == id }),
+              let handle = OperationCoordinator.beginOperation(type: .refresh, appName: item.appName, bundleId: item.bundleId) else {
+            errorMessage = "Slip is busy with another installation or renewal. Try again when it finishes."
+            return false
+        }
+        activeOperationHandle = handle
+        activeRefreshID = id
+        operationCancelled = false
+        isInstalling = true
+        currentStage = "Checking \(item.appName)"
+        errorMessage = nil
+        authenticationNotice = nil
+        authentication = AuthenticationFlow()
+        installStartedAt = Date()
+        overallProgress = 0
+        stageProgress = [:]
+        defer {
+            handle.end()
+            activeOperationHandle = nil
+            activeRefreshID = nil
+            isInstalling = false
+            refreshingManagedIDs.remove(id)
+        }
+        do {
+            guard FileManager.default.fileExists(atPath: item.ipaPath) else {
+                throw SideloomError.message("The saved IPA is missing. Choose a replacement IPA in Auto Refresh.")
+            }
+            let inspection = try await core.run(["inspect", item.ipaPath])
+            guard !operationCancelled else { return false }
+            guard let info = inspection.ipa, info.encryptionStatus != "Encrypted" else {
+                throw SideloomError.message("Choose a valid decrypted IPA before renewing this app.")
+            }
+            guard item.options.bundleId != nil || info.bundleId == item.bundleId else {
+                throw SideloomError.message("The saved IPA belongs to another app. Choose the correct IPA before renewing.")
+            }
+            let discovery = try await core.run(["devices"])
+            guard !operationCancelled else { return false }
+            guard let device = discovery.devices?.filter({ $0.udid == item.deviceUDID })
+                .sorted(by: { $0.connectionType == "USB" && $1.connectionType != "USB" }).first else {
+                throw SideloomError.message("Connect \(item.deviceName), unlock it, then refresh again.")
+            }
+            let request = InstallRequest(email: item.account, password: try KeychainStore.password(for: item.account),
+                                         anisetteServer: anisetteServer, storagePath: try accountStorageURL(for: item.account).path,
+                                         device: device, options: item.options, authenticationMode: authenticationMode)
+            appendActivity("Renewing \(item.appName) on \(device.displayName)")
+            await consumeInstall(request, ipa: info, renewing: item)
+            return currentStage == "Installed"
+        } catch {
+            if !operationCancelled { errorMessage = friendlyMessage(for: error); currentStage = "Refresh needs attention" }
+            var updated = item
+            updated.status = "Needs attention"
+            updated.lastError = errorMessage ?? "Refresh cancelled."
+            updated.lastAttemptAt = Date()
+            updated.nextRefreshAt = Date().addingTimeInterval(30 * 60)
+            try? AutoRefreshStore.mergeOutcome(updated, original: item)
+            return false
         }
     }
 
     @discardableResult
     func uninstallApps(bundleIDs: Set<String>) async -> Set<String> {
-        guard !isUninstallingApps, let device = selectedDevice, !bundleIDs.isEmpty else { return [] }
+        guard !workspaceIsBusy, !isUninstallingApps, let device = selectedDevice, !bundleIDs.isEmpty else { return [] }
         isUninstallingApps = true
         defer { isUninstallingApps = false }
         do {
@@ -331,28 +803,51 @@ final class AppModel: ObservableObject {
     }
 
     func install() {
-        guard !isInstalling else { return }
+        guard !isRunningInstallQueue, !isImportingLibrary, !isRestoringWorkspace else { return }
+        Task { _ = await installCurrentWorkspace() }
+    }
+
+    @discardableResult
+    func installCurrentWorkspace() async -> Bool {
+        guard !isAuthenticating, !isInspecting, !isDownloading, !isExporting else {
+            errorMessage = "Wait for the current operation to finish before installing."
+            return false
+        }
+        operationCancelled = false
+        authenticationNotice = nil
+        errorMessage = nil
+        if let refreshingName = currentlyRefreshingAppName {
+            errorMessage = "An app is already refreshing (\(refreshingName)). Please wait for it to finish before installing a new app."
+            appendActivity("Installation blocked: \(refreshingName) is currently refreshing")
+            return false
+        }
         guard let ipa, let selectedDevice else {
             errorMessage = ipa == nil ? "Choose an IPA first." : "Connect and select an iPhone."
-            return
+            return false
         }
         guard !selectedAccount.isEmpty else {
             errorMessage = "Add an Apple Account in Keychain first."
-            return
+            return false
         }
         if let issue = blockingInstallIssue {
             errorMessage = "\(issue.title). \(issue.detail)"
-            return
+            return false
         }
+
+        guard let opHandle = OperationCoordinator.beginOperation(
+            type: .install,
+            appName: ipa.appName,
+            bundleId: ipa.bundleId
+        ) else {
+            let name = OperationCoordinator.currentlyRefreshingAppName() ?? "Another operation"
+            errorMessage = "\(name) is currently in progress. Please wait for it to finish before installing a new app."
+            return false
+        }
+        activeOperationHandle = opHandle
 
         do {
             let password = try KeychainStore.password(for: selectedAccount)
-            let storageURL = try FileManager.default.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            ).appending(path: "app.sideloom.native/Core", directoryHint: .isDirectory)
+            let storageURL = try accountStorageURL(for: selectedAccount)
             let options = installOptions(for: ipa)
             let request = InstallRequest(
                 email: selectedAccount,
@@ -360,22 +855,32 @@ final class AppModel: ObservableObject {
                 anisetteServer: anisetteServer,
                 storagePath: storageURL.path,
                 device: selectedDevice,
-                options: options
+                options: options,
+                authenticationMode: authenticationMode
             )
             isInstalling = true
+            authentication = AuthenticationFlow()
             overallProgress = 0
             stageProgress = [:]
             currentStage = "Starting"
             installStartedAt = Date()
             appendActivity("Starting install on \(selectedDevice.name) via \(selectedDevice.connectionType)")
-            Task { await consumeInstall(request, ipa: ipa) }
+            persistWorkspace()
+            await consumeInstall(request, ipa: ipa)
+            return currentStage == "Installed"
         } catch {
-            errorMessage = error.localizedDescription
+            activeOperationHandle?.end()
+            activeOperationHandle = nil
+            errorMessage = friendlyMessage(for: error)
+            return false
         }
     }
 
     func exportModifiedIPA(to destination: URL) {
-        guard !isExporting else { return }
+        guard !workspaceIsBusy else {
+            errorMessage = "Wait for the current IPA operation to finish before exporting."
+            return
+        }
         guard let ipa else {
             errorMessage = "Choose an IPA first."
             return
@@ -418,9 +923,19 @@ final class AppModel: ObservableObject {
     }
 
     func clearIPA() {
+        guard !isInstalling, !isExporting, !isRunningInstallQueue, !isImportingLibrary, !isRestoringWorkspace else { return }
+        cancelDownload()
+        inspectionGeneration = UUID()
+        isInspecting = false
+        persistWorkspace()
         ipa = nil
+        activeLibraryID = nil
+        activeSourceStamp = nil
+        reviewingQueueID = nil
+        library.activeID = nil
         discardIPAPreview()
         inspectionDuration = nil
+        ipaPreparationNotice = nil
         resetCustomizations()
         currentStage = "Ready"
         overallProgress = 0
@@ -444,19 +959,47 @@ final class AppModel: ObservableObject {
 
     func refreshAllManagedInstallations() {
         let ids = Set(managedInstallations.filter(\.enabled).map(\.id))
-        refreshManagedInstallations(ids)
+        refreshManagedInstallations(ids, respectPaused: true)
     }
 
-    private func consumeInstall(_ request: InstallRequest, ipa: IpaInfo) async {
-        defer { isInstalling = false }
+    func consumeInstall(_ request: InstallRequest, ipa: IpaInfo, renewing item: ManagedInstallation? = nil) async {
+        var renewalCompleted = false
+        defer {
+            if let item, !renewalCompleted {
+                var failed = item
+                failed.status = operationCancelled ? "Waiting to retry" : "Needs attention"
+                failed.lastError = operationCancelled ? "Refresh cancelled." : (errorMessage ?? "Open Slip to finish renewing this app.")
+                failed.lastAttemptAt = Date()
+                failed.nextRefreshAt = Date().addingTimeInterval(30 * 60)
+                try? AutoRefreshStore.mergeOutcome(failed, original: item)
+                reloadManagedInstallations()
+            }
+            isInstalling = false
+            showTwoFactor = false
+            showCertificates = false
+            verificationCode = ""
+            isSubmittingTwoFactor = false
+            twoFactorError = nil
+            activeOperationHandle?.end()
+            activeOperationHandle = nil
+        }
         do {
             let stream = try core.installStream(request: request)
+            var completed = false
             for try await event in stream {
+                if operationCancelled { return }
                 switch event.type {
                 case "progress":
                     updateProgress(stage: event.stage ?? "working", value: event.value ?? 0, message: event.message)
+                case "authenticationState":
+                    receiveAuthenticationState(event)
+                case "authenticationWarning":
+                    recordAuthenticationWarning(event)
+                case "appIdQuota":
+                    recordAppIDQuota(event)
                 case "twoFactorRequired":
-                    showTwoFactor = true
+                    receiveTwoFactorChallenge(event.details)
+                    errorMessage = nil
                     appendActivity("Apple requested a verification code")
                 case "accountProfile":
                     if let email = event.email, let accountName = event.accountName {
@@ -465,8 +1008,15 @@ final class AppModel: ObservableObject {
                     }
                 case "certificateSelectionRequired":
                     certificates = event.certificates ?? []
+                    guard certificates.contains(where: { $0.serialNumber?.isEmpty == false }) else {
+                        core.cancel()
+                        throw SideloomError.message("Apple reported a certificate limit but returned no certificates to revoke. Open Apple Accounts, refresh Certificates & App IDs, and try again.")
+                    }
                     showCertificates = true
                 case "completed":
+                    completed = true
+                    showTwoFactor = false
+                    verificationCode = ""
                     overallProgress = 1
                     currentStage = "Installed"
                     if let installStartedAt {
@@ -474,6 +1024,19 @@ final class AppModel: ObservableObject {
                     }
                     appendActivity("Installation completed successfully\(lastInstallDuration.map { " in \($0.formatted(.number.precision(.fractionLength(1))))s" } ?? "")")
                     do {
+                        if let item {
+                            renewalCompleted = true
+                            var refreshed = item
+                            let now = Date()
+                            refreshed.installedAt = now
+                            refreshed.expiresAt = now.addingTimeInterval(7 * 24 * 60 * 60)
+                            refreshed.nextRefreshAt = now.addingTimeInterval(6 * 24 * 60 * 60)
+                            refreshed.lastAttemptAt = now
+                            refreshed.status = "Scheduled"
+                            refreshed.lastError = nil
+                            try AutoRefreshStore.mergeOutcome(refreshed, original: item)
+                            reloadManagedInstallations()
+                        } else {
                         let entry = try AutoRefreshStore.recordSuccessfulInstall(
                             ipa: ipa,
                             request: request,
@@ -483,38 +1046,132 @@ final class AppModel: ObservableObject {
                         if entry.enabled {
                             appendActivity("Auto Refresh scheduled for \(entry.nextRefreshAt.formatted(date: .abbreviated, time: .shortened))")
                         }
+                        }
                     } catch {
                         appendActivity("Could not save Auto Refresh schedule: \(error.localizedDescription)")
                     }
                 case "error":
-                    let message = friendlyMessage(event.message ?? "Installation failed")
+                    let raw = event.message ?? "Installation failed"
+                    if raw.contains("1100") || raw.lowercased().contains("session has expired") || raw.lowercased().contains("session expired") {
+                        clearDeveloperSession(for: request.email)
+                    }
+                    let message = friendlyMessage(raw)
                     showTwoFactor = false
+                    verificationCode = ""
                     showCertificates = false
+                    if raw.lowercased().contains("not enough available app ids") {
+                        showAppIDExhausted = true
+                        currentStage = "Install failed"
+                        return
+                    }
                     errorMessage = message
                     appendActivity("Error: \(message)")
+                    currentStage = "Install failed"
+                    return
                 default:
                     break
                 }
             }
+            if !completed && !operationCancelled {
+                throw SideloomError.message("The signing engine ended before confirming installation. Try again and check Activity for details.")
+            }
         } catch {
+            if operationCancelled { return }
+            currentStage = "Install failed"
             showTwoFactor = false
+            verificationCode = ""
             showCertificates = false
-            if errorMessage == nil { errorMessage = friendlyMessage(for: error) }
+            if errorMessage == nil {
+                let msg = friendlyMessage(for: error)
+                if msg.lowercased().contains("not enough available app ids") || msg.lowercased().contains("app ids") {
+                    showAppIDExhausted = true
+                } else {
+                    errorMessage = msg
+                }
+            }
             if let errorMessage { appendActivity("Error: \(errorMessage)") }
             appendActivity("Installation stopped")
         }
     }
 
-    func submitTwoFactor(_ code: String?) {
-        defer { showTwoFactor = false }
-        do {
-            try core.submitTwoFactor(code)
-        } catch {
-            errorMessage = error.localizedDescription
+    func clearDeveloperSession(for email: String? = nil) {
+        let target = email ?? (selectedAccount.isEmpty ? nil : selectedAccount)
+        guard let account = target,
+              let url = try? accountStorageURL(for: account) else { return }
+        try? KeychainStore.deleteDeveloperSession(storageURL: url)
+    }
+
+    func submitTwoFactorCode(_ code: String? = nil) {
+        guard canSubmitTwoFactor else { return }
+        let clean = VerificationCode.normalized(code ?? verificationCode)
+        guard clean.count == 6 else {
+            showTwoFactorError("Enter the six-digit verification code from Apple.")
+            return
         }
+        guard beginTwoFactorAction(.verifying) else { return }
+        do {
+            try core.submitTwoFactor(clean)
+            // Keep the field visible while Apple verifies and prepares developer access.
+            verificationCode = ""
+        } catch { failTwoFactorAction(error) }
+    }
+
+    func submitTwoFactor(_ code: String?) {
+        guard let code else { cancelInstall(); return }
+        submitTwoFactorCode(code)
+    }
+
+    func selectTwoFactorMethod(numberID: UInt32? = nil) {
+        guard beginTwoFactorAction(.choosingMethod) else { return }
+        do {
+            try core.selectTwoFactorMethod(numberID: numberID)
+            verificationCode = ""
+        } catch { failTwoFactorAction(error) }
+    }
+
+    func resendTwoFactor() {
+        guard beginTwoFactorAction(.resending) else { return }
+        do {
+            try core.resendTwoFactor()
+            verificationCode = ""
+            appendActivity("Requested a new Apple verification code")
+        } catch { failTwoFactorAction(error) }
+    }
+
+    private func beginTwoFactorAction(_ action: AuthenticationFlow.ChallengeAction) -> Bool {
+        guard canRespondToTwoFactor else { return false }
+        if isLoggingIn && !authentication.beginChallengeAction(action) { return false }
+        isSubmittingTwoFactor = true
+        twoFactorError = nil
+        switch action {
+        case .verifying: twoFactorStatus = "Verifying your code with Apple…"
+        case .resending: twoFactorStatus = "Requesting a new code…"
+        case .choosingMethod: twoFactorStatus = "Sending your verification code…"
+        }
+        return true
+    }
+
+    private func showTwoFactorError(_ message: String) {
+        twoFactorError = message
+        if isLoggingIn { authentication.showChallengeError(message) }
+    }
+
+    private func failTwoFactorAction(_ error: Error) {
+        let message = friendlyMessage(for: error)
+        isSubmittingTwoFactor = false
+        if isLoggingIn {
+            authentication.fail(message: message, retryable: true)
+            core.cancel()
+        } else { twoFactorError = message }
     }
 
     func submitCertificates(_ serials: [String]?) {
+        guard let serials else { cancelInstall(); return }
+        let available = Set(certificates.compactMap(\.serialNumber))
+        guard !serials.isEmpty, Set(serials).isSubset(of: available) else {
+            errorMessage = "Select an existing certificate to revoke."
+            return
+        }
         defer { showCertificates = false }
         do {
             try core.submitCertificates(serials)
@@ -523,27 +1180,49 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func cancelSignIn() {
+        if isLoggingIn { cancelInstall() }
+        else { authentication = AuthenticationFlow(); verificationCode = "" }
+    }
+
     func cancelInstall() {
+        operationCancelled = true
+        if isRunningInstallQueue { queueCancelled = true }
+        if activeRefreshID != nil { refreshQueueCancelled = true }
+        if isLoggingIn { authentication.cancel(); loginStage = authentication.message }
+        isSubmittingTwoFactor = false
+        twoFactorError = nil
+        showTwoFactor = false
+        showCertificates = false
+        showAppIDExhausted = false
+        verificationCode = ""
         core.cancel()
-        isInstalling = false
         currentStage = "Cancelled"
-        appendActivity("Installation cancelled")
+        appendActivity("Apple Account operation cancelled")
+    }
+
+    func dismissAppIDExhausted() {
+        showAppIDExhausted = false
+        NotificationCenter.default.post(name: .showAccounts, object: nil)
     }
 
     func reloadManagedInstallations() {
-        managedInstallations = AutoRefreshStore.load().sorted {
-            $0.nextRefreshAt < $1.nextRefreshAt
+        do {
+            managedInstallations = try AutoRefreshStore.loadChecked().sorted { $0.nextRefreshAt < $1.nextRefreshAt }
+            managedInstallationsError = nil
+        } catch {
+            managedInstallationsError = "Slip couldn’t read the renewal schedule. Your saved file has been preserved."
         }
     }
 
     func setAutoRefreshEnabled(_ enabled: Bool, for id: String) {
-        var installations = AutoRefreshStore.load()
-        guard let index = installations.firstIndex(where: { $0.id == id }) else { return }
-        installations[index].enabled = enabled
-        installations[index].status = enabled ? "Scheduled" : "Paused"
-        installations[index].lastError = nil
         do {
-            try AutoRefreshStore.save(installations)
+            try AutoRefreshStore.update { installations in
+                guard let index = installations.firstIndex(where: { $0.id == id }) else { return }
+                installations[index].enabled = enabled
+                installations[index].status = enabled ? "Scheduled" : "Paused"
+                installations[index].lastError = nil
+            }
             reloadManagedInstallations()
         } catch {
             errorMessage = error.localizedDescription
@@ -551,10 +1230,8 @@ final class AppModel: ObservableObject {
     }
 
     func forgetManagedInstallation(_ id: String) {
-        var installations = AutoRefreshStore.load()
-        installations.removeAll { $0.id == id }
         do {
-            try AutoRefreshStore.save(installations)
+            try AutoRefreshStore.update { $0.removeAll { $0.id == id } }
             reloadManagedInstallations()
             appendActivity("Removed an Auto Refresh schedule")
         } catch {
@@ -563,18 +1240,26 @@ final class AppModel: ObservableObject {
     }
 
     func refreshManagedInstallationNow(_ id: String) {
-        guard !refreshingManagedIDs.contains(id) else { return }
-        refreshingManagedIDs.insert(id)
-        Task {
-            let result = await AutoRefreshWorker.runDue(forceIDs: [id])
-            refreshingManagedIDs.remove(id)
-            reloadManagedInstallations()
-            if result.succeeded > 0 {
-                appendActivity("Auto Refresh completed successfully")
-            } else if result.attempted > 0 {
-                appendActivity("Auto Refresh did not complete; review its status")
-            }
-        }
+        refreshManagedInstallations([id])
+    }
+
+    func prepareManagedReinstall(_ id: String, from url: URL) async {
+        guard let item = AutoRefreshStore.load().first(where: { $0.id == id }) else { return }
+        guard await loadIPA(url, expectedBundleID: item.options.bundleId == nil ? item.bundleId : nil),
+              ipa?.path == url.resolvingSymlinksInPath().path else { return }
+        customName = item.options.displayName ?? ""
+        customBundleID = item.options.bundleId ?? ""
+        customIconURL = item.options.customIconPath.map { URL(fileURLWithPath: $0) }
+        increasedMemoryLimit = item.options.increasedMemoryLimit
+        minimumOSVersion = item.options.minimumOsVersion ?? ""
+        removeSupportedDevices = item.options.removeSupportedDevices
+        enableFileSharing = item.options.enableFileSharing
+        plistOverrides = item.options.plistOverrides
+        keepAutomaticallyRefreshed = item.enabled
+        chooseAccount(item.account)
+        if let device = devices.first(where: { $0.udid == item.deviceUDID }) { selectedDevice = device }
+        ipaPreparationNotice = "Signing choices restored for \(item.appName). Review the app and extensions before installing; optional extensions start disabled."
+        NotificationCenter.default.post(name: .showInstall, object: nil)
     }
 
     private func updateProgress(stage: String, value: Double, message: String?) {
@@ -587,7 +1272,7 @@ final class AppModel: ObservableObject {
         currentStage = message ?? stage.capitalized
     }
 
-    private func installOptions(for ipa: IpaInfo) -> IpaInstallOptions {
+    func installOptions(for ipa: IpaInfo, includeUnfinishedOverrides: Bool = false) -> IpaInstallOptions {
         IpaInstallOptions(
             appPath: ipa.path,
             displayName: customName.trimmed.nilIfEmpty,
@@ -598,17 +1283,29 @@ final class AppModel: ObservableObject {
             minimumOsVersion: minimumOSVersion.trimmed.nilIfEmpty,
             removeSupportedDevices: removeSupportedDevices,
             enableFileSharing: enableFileSharing,
-            plistOverrides: plistOverrides.filter { !$0.key.trimmed.isEmpty }
+            plistOverrides: includeUnfinishedOverrides ? plistOverrides : plistOverrides.filter { !$0.key.trimmed.isEmpty }
         )
     }
 
+    private func accountStorageURL(for email: String) throws -> URL {
+        let base = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ).appending(path: "app.sideloom.native/Core", directoryHint: .isDirectory)
+        let safe = email.lowercased().replacingOccurrences(of: "@", with: "_at_").replacingOccurrences(of: ".", with: "_")
+        return base.appending(path: safe, directoryHint: .isDirectory)
+    }
+
     private func removeRefreshRecipes(for bundleIDs: Set<String>) {
-        var installations = AutoRefreshStore.load()
-        let originalCount = installations.count
-        installations.removeAll { bundleIDs.contains($0.bundleId) }
-        guard installations.count != originalCount else { return }
         do {
-            try AutoRefreshStore.save(installations)
+            let removed = try AutoRefreshStore.update { installations in
+                let count = installations.count
+                installations.removeAll { bundleIDs.contains($0.bundleId) }
+                return count - installations.count
+            }
+            guard removed > 0 else { return }
             reloadManagedInstallations()
             appendActivity("Removed matching Auto Refresh schedules")
         } catch {
@@ -640,6 +1337,7 @@ final class AppModel: ObservableObject {
             }
             ipaIconURL = destination
         } catch {
+            guard ipa?.path == info.path else { return }
             ipaIconURL = nil
             appendActivity("The IPA did not expose a usable app icon; showing a fallback.")
         }
@@ -682,18 +1380,109 @@ final class AppModel: ObservableObject {
     }
 
     private func friendlyMessage(_ raw: String) -> String {
-        var message = raw
-        if let expression = try? NSRegularExpression(pattern: #"/Users/[^\s]+/\.cargo/[^\s]+:\d+(?::\d+)?"#) {
+        var message = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        message = message.replacingOccurrences(of: "thread 'main' panicked", with: "The signing engine stopped unexpectedly")
+
+        let lowerRaw = message.lowercased()
+        if lowerRaw.contains("no 2fa code provided")
+            || lowerRaw.contains("no 2fa method selected")
+            || lowerRaw.contains("a two-factor code is required")
+            || (lowerRaw.contains("aborting") && (lowerRaw.contains("2fa") || lowerRaw.contains("two-factor")))
+            || ((lowerRaw.contains("2fa") || lowerRaw.contains("two-factor") || lowerRaw.contains("verification")) && (lowerRaw.contains("cancel") || lowerRaw.contains("abort")))
+            || lowerRaw.contains("two-factor verification was canceled")
+            || lowerRaw.contains("two-factor authentication was canceled")
+            || lowerRaw.contains("two-factor authentication canceled") {
+            return "Two-factor verification was canceled. Enter the code sent to your Apple devices to complete sign-in."
+        }
+        if lowerRaw.contains("-80045") || lowerRaw.contains("action cannot be completed") {
+            return "Apple temporarily rate-limited authentication (-80045). Please wait 2 to 3 minutes or try again."
+        }
+        if lowerRaw.contains("websocket") || lowerRaw.contains("connection reset without closing handshake") {
+            return "The Apple authentication service temporarily disconnected. Please try signing in again."
+        }
+        if lowerRaw.contains("-20209") || (lowerRaw.contains("locked") && (lowerRaw.contains("apple id") || lowerRaw.contains("account"))) {
+            return "Your Apple Account has been locked for security reasons. Please visit https://iforgot.apple.com to unlock it, then try again."
+        }
+        if lowerRaw.contains("-20101") || lowerRaw.contains("-20102") || lowerRaw.contains("your apple id or password was incorrect") || (lowerRaw.contains("incorrect") && lowerRaw.contains("password")) {
+            return "Apple rejected the sign-in. Your Apple Account email or password was incorrect. Please check your credentials and try again."
+        }
+        if lowerRaw.contains("-21669") || lowerRaw.contains("incorrect verification code") {
+            return "The verification code entered was incorrect. Please try signing in again with a new code."
+        }
+        if lowerRaw.contains("-22979") || lowerRaw.contains("-22981") || (lowerRaw.contains("too many") && lowerRaw.contains("code")) {
+            return "Too many verification codes have been requested. Please wait a few minutes before trying again."
+        }
+        if lowerRaw.contains("-28248") {
+            return "SMS verification is unavailable for this Apple Account. Please verify using a trusted Apple device."
+        }
+        if lowerRaw.contains("503") || lowerRaw.contains("service temporarily unavailable") {
+            return "Apple's sign-in service (GrandSlam) is temporarily unavailable (HTTP 503). Apple may be experiencing high load or throttling requests. Please wait a few moments and try again."
+        }
+        if lowerRaw.contains("429") || lowerRaw.contains("too many requests") {
+            return "Apple's authentication servers are temporarily rate-limiting requests (HTTP 429 Too Many Requests). Please wait 2 to 3 minutes before trying again."
+        }
+        if lowerRaw.contains("mach-o") {
+            return "The selected IPA contains an incompatible or corrupted binary. Slip has attempted to repair it, but the app bundle may be incomplete."
+        }
+        if lowerRaw.contains("applicationverificationfailed") || lowerRaw.contains("failed to verify code signature") {
+            return "iOS rejected the app signature. Ensure Developer Mode is enabled on your iPhone in Settings \u{2192} Privacy & Security."
+        }
+        if lowerRaw.contains("not enough available app ids") {
+            return "Your free Apple Account does not have enough available App IDs for this setup. Free accounts allow up to 10 App IDs in a seven-day period, and each kept extension can require another ID. Remove optional extensions or wait for Apple's quota to renew. Deleting an ID may not immediately restore the quota."
+        }
+        if lowerRaw.contains("maximum number of installed apps") {
+            return "Free Apple Accounts can only have 3 active sideloaded apps at a time. Delete another sideloaded app from your iPhone and try again."
+        }
+
+        let lines = message.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let bulletLines = lines.filter { $0.hasPrefix("●") || $0.hasPrefix("╰─▶") || $0.hasPrefix("├─▶") }
+            .map {
+                $0.trimmingCharacters(in: CharacterSet(charactersIn: "●╰├│─▶ ").union(.whitespacesAndNewlines))
+            }
+
+        if let bestBullet = bulletLines.last(where: {
+            let bl = $0.lowercased()
+            return !bl.contains("failed to log in") &&
+                !bl.contains("failed to send initial") &&
+                !bl.contains("grandslam error") &&
+                !bl.contains("received error response") &&
+                !bl.contains("caused by") &&
+                !bl.contains(".cargo") &&
+                !bl.contains(".rs:") &&
+                !bl.isEmpty
+        }) ?? bulletLines.first {
+            message = bestBullet
+        } else {
+            let cleanLines = lines.map {
+                $0.trimmingCharacters(in: CharacterSet(charactersIn: "●╰├│─▶ ").union(.whitespacesAndNewlines))
+            }.filter { line in
+                let l = line.lowercased()
+                return !l.contains(".cargo") && !l.contains(".rs:") && !l.isEmpty && l != "misc"
+            }
+            if let firstClean = cleanLines.first {
+                message = firstClean
+            }
+        }
+
+        message = message.trimmingCharacters(in: CharacterSet(charactersIn: "●╰├│─▶ ").union(.whitespacesAndNewlines))
+
+        if let expression = try? NSRegularExpression(pattern: #"(/Users/[^\s]+|/[^\s]+\.rs:\d+(?::\d+)?)"#) {
             message = expression.stringByReplacingMatches(
                 in: message,
                 range: NSRange(message.startIndex..., in: message),
-                withTemplate: "signing engine"
-            )
+                withTemplate: ""
+            ).trimmingCharacters(in: CharacterSet(charactersIn: "●╰├│─▶ ").union(.whitespacesAndNewlines))
         }
-        message = message.replacingOccurrences(of: "thread 'main' panicked", with: "The signing engine stopped unexpectedly")
-        return message.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let lower = message.lowercased()
+        if message.isEmpty || lower.contains("signing engine") || lower == "misc" || message.hasPrefix("╰") || message.hasPrefix("─▶") {
+            return "Unable to complete authentication with Apple. Please verify your Apple Account and connection, then try again."
+        }
+
+        return message
     }
 }
+
 
 private extension String {
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }

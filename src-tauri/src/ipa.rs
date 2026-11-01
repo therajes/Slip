@@ -3,7 +3,7 @@ use plist::{Dictionary, Value};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     io::{Cursor, Read, Write},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -83,6 +83,16 @@ fn plist_string(dict: &Dictionary, key: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+struct IncompleteIpa(Option<PathBuf>);
+
+impl Drop for IncompleteIpa {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
 fn read_plist(archive: &mut ZipArchive<File>, path: &str) -> Result<Dictionary, AppError> {
     let mut entry = archive.by_name(path).map_err(|e| {
         AppError::Filesystem(format!("Unable to read {path} from IPA"), e.to_string())
@@ -126,36 +136,45 @@ fn read_u32(bytes: &[u8], offset: usize, little_endian: bool) -> Option<u32> {
 fn thin_macho_encryption(bytes: &[u8]) -> Option<bool> {
     let magic = bytes.get(..4)?;
     let (little_endian, header_size) = match magic {
-        [0xcf, 0xfa, 0xed, 0xfe] => (true, 32),
+        [0xcf, 0xfa, 0xed, 0xfe] => (true, 32usize),
         [0xce, 0xfa, 0xed, 0xfe] => (true, 28),
         [0xfe, 0xed, 0xfa, 0xcf] => (false, 32),
         [0xfe, 0xed, 0xfa, 0xce] => (false, 28),
         _ => return None,
     };
     let command_count = read_u32(bytes, 16, little_endian)? as usize;
+    let commands_size = read_u32(bytes, 20, little_endian)? as usize;
+    let commands_end = header_size.checked_add(commands_size)?;
+    if commands_end > bytes.len() || command_count > commands_size / 8 {
+        return None;
+    }
+    let mut encrypted = false;
     let mut offset = header_size;
     for _ in 0..command_count {
         let command = read_u32(bytes, offset, little_endian)?;
         let command_size = read_u32(bytes, offset + 4, little_endian)? as usize;
-        if command_size < 8 || offset.checked_add(command_size)? > bytes.len() {
+        let end = offset.checked_add(command_size)?;
+        if command_size < 8 || end > commands_end {
             return None;
         }
-        // LC_ENCRYPTION_INFO and LC_ENCRYPTION_INFO_64 have cryptid at +16.
         if command == 0x21 || command == 0x2c {
-            return Some(read_u32(bytes, offset + 16, little_endian)? != 0);
+            let required_size = if command == 0x2c { 24 } else { 20 };
+            if command_size < required_size {
+                return None;
+            }
+            encrypted |= read_u32(bytes, offset + 16, little_endian)? != 0;
         }
-        offset += command_size;
+        offset = end;
     }
-    Some(false)
+    (offset == commands_end).then_some(encrypted)
 }
 
 fn macho_encryption_status(bytes: &[u8]) -> String {
     if let Some(encrypted) = thin_macho_encryption(bytes) {
         return if encrypted { "Encrypted" } else { "Decrypted" }.to_string();
     }
-
     let magic = bytes.get(..4);
-    let fat_little_endian = match magic {
+    let little_endian = match magic {
         Some([0xca, 0xfe, 0xba, 0xbe]) | Some([0xca, 0xfe, 0xba, 0xbf]) => false,
         Some([0xbe, 0xba, 0xfe, 0xca]) | Some([0xbf, 0xba, 0xfe, 0xca]) => true,
         _ => return "Unknown".to_string(),
@@ -164,42 +183,47 @@ fn macho_encryption_status(bytes: &[u8]) -> String {
         magic,
         Some([0xca, 0xfe, 0xba, 0xbf]) | Some([0xbf, 0xba, 0xfe, 0xca])
     );
-    let count = match read_u32(bytes, 4, fat_little_endian) {
-        Some(value) => value as usize,
-        None => return "Unknown".to_string(),
-    };
     let arch_size = if fat64 { 32 } else { 20 };
-    let mut found_slice = false;
-    let mut encrypted_slice = false;
+    let read_u64 = |offset| -> Option<usize> {
+        let chunk: [u8; 8] = bytes.get(offset..offset + 8)?.try_into().ok()?;
+        usize::try_from(if little_endian {
+            u64::from_le_bytes(chunk)
+        } else {
+            u64::from_be_bytes(chunk)
+        })
+        .ok()
+    };
+    let Some(count) = read_u32(bytes, 4, little_endian).map(|value| value as usize) else {
+        return "Unknown".into();
+    };
+    if count == 0 || count > bytes.len().saturating_sub(8) / arch_size {
+        return "Unknown".into();
+    }
+    let mut unknown = false;
     for index in 0..count {
         let arch = 8 + index * arch_size;
-        let slice_offset = if fat64 {
-            let high = read_u32(bytes, arch + 8, fat_little_endian).unwrap_or(0) as u64;
-            let low = read_u32(bytes, arch + 12, fat_little_endian).unwrap_or(0) as u64;
-            (high << 32 | low) as usize
+        let offset = if fat64 {
+            read_u64(arch + 8)
         } else {
-            read_u32(bytes, arch + 8, fat_little_endian).unwrap_or(0) as usize
+            read_u32(bytes, arch + 8, little_endian).map(|value| value as usize)
         };
-        let slice_size = if fat64 {
-            let high = read_u32(bytes, arch + 16, fat_little_endian).unwrap_or(0) as u64;
-            let low = read_u32(bytes, arch + 20, fat_little_endian).unwrap_or(0) as u64;
-            (high << 32 | low) as usize
+        let size = if fat64 {
+            read_u64(arch + 16)
         } else {
-            read_u32(bytes, arch + 12, fat_little_endian).unwrap_or(0) as usize
+            read_u32(bytes, arch + 12, little_endian).map(|value| value as usize)
         };
-        let Some(slice) = bytes.get(slice_offset..slice_offset.saturating_add(slice_size)) else {
-            continue;
-        };
-        if let Some(encrypted) = thin_macho_encryption(slice) {
-            found_slice = true;
-            encrypted_slice |= encrypted;
+        let slice = offset.zip(size).and_then(|(offset, size)| {
+            offset
+                .checked_add(size)
+                .and_then(|end| bytes.get(offset..end))
+        });
+        match slice.and_then(thin_macho_encryption) {
+            Some(true) => return "Encrypted".into(),
+            Some(false) => {}
+            None => unknown = true,
         }
     }
-    match (found_slice, encrypted_slice) {
-        (true, true) => "Encrypted".to_string(),
-        (true, false) => "Decrypted".to_string(),
-        _ => "Unknown".to_string(),
-    }
+    if unknown { "Unknown" } else { "Decrypted" }.into()
 }
 
 fn plist_override_value(item: &PlistOverride) -> Result<Value, AppError> {
@@ -216,8 +240,10 @@ fn plist_override_value(item: &PlistOverride) -> Result<Value, AppError> {
             .map_err(|_| AppError::Misc(format!("{} must be an integer", item.key))),
         "Real" => value
             .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
             .map(Value::Real)
-            .map_err(|_| AppError::Misc(format!("{} must be a number", item.key))),
+            .ok_or_else(|| AppError::Misc(format!("{} must be a finite number", item.key))),
         other => Err(AppError::Misc(format!(
             "Unsupported plist value type {other} for {}",
             item.key
@@ -225,8 +251,64 @@ fn plist_override_value(item: &PlistOverride) -> Result<Value, AppError> {
     }
 }
 
+fn has_ipa_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("ipa"))
+}
+
+fn validate_archive_name(name: &str) -> Result<(), AppError> {
+    let path = name.trim_end_matches('/');
+    if path.is_empty()
+        || name.contains('\\')
+        || name.contains('\0')
+        || path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == ".." || part.contains(':'))
+    {
+        return Err(AppError::Misc(format!(
+            "The IPA contains an unsafe archive path: {name:?}. Obtain a clean IPA and try again."
+        )));
+    }
+    Ok(())
+}
+
+fn executable_encryption(
+    archive: &mut ZipArchive<File>,
+    root: &str,
+    info: &Dictionary,
+) -> Result<String, AppError> {
+    let Some(executable) = plist_string(info, "CFBundleExecutable") else {
+        return Ok("Unknown".into());
+    };
+    if executable.is_empty()
+        || executable.contains('/')
+        || executable.contains('\\')
+        || executable == "."
+        || executable == ".."
+    {
+        return Err(AppError::Misc(format!(
+            "Invalid CFBundleExecutable in {root}Info.plist"
+        )));
+    }
+    let path = format!("{root}{executable}");
+    let mut entry = archive.by_name(&path).map_err(|error| {
+        AppError::Misc(format!(
+            "The app executable {path} is missing or unreadable: {error}. Obtain a complete IPA."
+        ))
+    })?;
+    let mut bytes = Vec::new();
+    entry.read_to_end(&mut bytes).map_err(|error| {
+        AppError::Filesystem(
+            format!("Unable to inspect executable {path}"),
+            error.to_string(),
+        )
+    })?;
+    Ok(macho_encryption_status(&bytes))
+}
+
 fn parse_ipa(path: &Path) -> Result<ParsedIpa, AppError> {
-    if path.extension().and_then(|value| value.to_str()) != Some("ipa") {
+    if !has_ipa_extension(path) {
         return Err(AppError::Misc(
             "The selected file is not an IPA".to_string(),
         ));
@@ -242,13 +324,24 @@ fn parse_ipa(path: &Path) -> Result<ParsedIpa, AppError> {
         .map_err(|e| AppError::Misc(format!("The selected IPA is not a valid ZIP archive: {e}")))?;
 
     let mut main_info_path = None;
+    let mut entry_names = HashSet::new();
+    let mut app_roots = HashSet::new();
     let mut extension_info_paths = HashMap::new();
     for index in 0..archive.len() {
         let entry = archive.by_index(index).map_err(|e| {
             AppError::Filesystem("Unable to inspect IPA entry".to_string(), e.to_string())
         })?;
-        let name = entry.name().replace('\\', "/");
-        let components: Vec<_> = name.split('/').filter(|part| !part.is_empty()).collect();
+        let name = entry.name().to_string();
+        validate_archive_name(&name)?;
+        if !entry_names.insert(name.trim_end_matches('/').to_string()) {
+            return Err(AppError::Misc(format!(
+                "The IPA contains duplicate archive entries at {name}. Obtain a clean IPA."
+            )));
+        }
+        let components: Vec<_> = name.trim_end_matches('/').split('/').collect();
+        if components.len() >= 2 && components[0] == "Payload" && components[1].ends_with(".app") {
+            app_roots.insert(components[1].to_string());
+        }
         if components.len() == 3
             && components[0] == "Payload"
             && components[1].ends_with(".app")
@@ -264,26 +357,43 @@ fn parse_ipa(path: &Path) -> Result<ParsedIpa, AppError> {
         }
     }
 
+    if app_roots.len() > 1 {
+        return Err(AppError::Misc("The IPA contains multiple apps in Payload. Select an IPA containing exactly one main app.".into()));
+    }
     let main_info_path = main_info_path
         .ok_or_else(|| AppError::Misc("No iOS app was found in Payload".to_string()))?;
     let main_root = main_info_path.trim_end_matches("Info.plist").to_string();
     let main_info = read_plist(&mut archive, &main_info_path)?;
     let bundle_id = plist_string(&main_info, "CFBundleIdentifier")
         .ok_or_else(|| AppError::Misc("The app has no bundle identifier".to_string()))?;
+    validate_bundle_id(&bundle_id)?;
     let app_name = plist_string(&main_info, "CFBundleDisplayName")
         .or_else(|| plist_string(&main_info, "CFBundleName"))
         .unwrap_or_else(|| "Unnamed App".to_string());
 
+    extension_info_paths.retain(|root, _| root.starts_with(&main_root));
+    let mut encrypted_extensions = Vec::new();
     let mut extensions = Vec::new();
     for (extension_path, info_path) in &extension_info_paths {
         if !extension_path.starts_with(&main_root) {
             continue;
         }
         let info = read_plist(&mut archive, info_path)?;
+        if executable_encryption(&mut archive, &format!("{extension_path}/"), &info)? == "Encrypted"
+        {
+            encrypted_extensions.push(extension_name(&info, extension_path));
+        }
+        let extension_id = plist_string(&info, "CFBundleIdentifier")
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                AppError::Misc(format!(
+                    "The extension {extension_path} has no bundle identifier"
+                ))
+            })?;
+        validate_bundle_id(&extension_id)?;
         extensions.push(IpaExtensionInfo {
             path: extension_path.clone(),
-            bundle_id: plist_string(&info, "CFBundleIdentifier")
-                .unwrap_or_else(|| "Unknown bundle ID".to_string()),
+            bundle_id: extension_id,
             name: extension_name(&info, extension_path),
             extension_point: extension_point(&info),
         });
@@ -291,19 +401,11 @@ fn parse_ipa(path: &Path) -> Result<ParsedIpa, AppError> {
     extensions.sort_by(|left, right| left.name.cmp(&right.name));
 
     let executable = plist_string(&main_info, "CFBundleExecutable");
-    let encryption_status = if let Some(executable) = &executable {
-        let executable_path = format!("{main_root}{executable}");
-        archive
-            .by_name(&executable_path)
-            .ok()
-            .and_then(|mut entry| {
-                let mut bytes = Vec::new();
-                entry.read_to_end(&mut bytes).ok().map(|_| bytes)
-            })
-            .map(|bytes| macho_encryption_status(&bytes))
-            .unwrap_or_else(|| "Unknown".to_string())
+    let main_encryption = executable_encryption(&mut archive, &main_root, &main_info)?;
+    let encryption_status = if encrypted_extensions.is_empty() {
+        main_encryption
     } else {
-        "Unknown".to_string()
+        "Encrypted".into()
     };
 
     let mut warnings = Vec::new();
@@ -320,9 +422,12 @@ fn parse_ipa(path: &Path) -> Result<ParsedIpa, AppError> {
                 .to_string(),
         );
     }
+    if encryption_status == "Unknown" {
+        warnings.push("The executable's encryption status could not be verified. Use a complete iOS IPA from a trusted source; malformed or unsupported executables may fail signing or installation.".into());
+    }
     if encryption_status == "Encrypted" {
         warnings.push(
-            "The main executable is App Store encrypted. Signing can succeed, but the app will not launch until you provide a legitimately decrypted IPA."
+            "This IPA contains an App Store encrypted executable. Provide a legitimately decrypted IPA before signing or installing it."
                 .to_string(),
         );
     }
@@ -526,13 +631,17 @@ fn set_custom_icon_plist(info: &mut Dictionary) {
     let files = Value::Array(vec![Value::String("SideloomIcon".to_string())]);
     let mut primary = Dictionary::new();
     primary.insert("CFBundleIconFiles".to_string(), files.clone());
-    primary.remove("CFBundleIconName");
     let mut icons = Dictionary::new();
     icons.insert(
         "CFBundlePrimaryIcon".to_string(),
         Value::Dictionary(primary),
     );
-    info.insert("CFBundleIcons".to_string(), Value::Dictionary(icons));
+    info.insert(
+        "CFBundleIcons".to_string(),
+        Value::Dictionary(icons.clone()),
+    );
+    info.insert("CFBundleIcons~ipad".to_string(), Value::Dictionary(icons));
+    info.remove("CFBundleIconName");
     info.insert("CFBundleIconFiles".to_string(), files);
 }
 
@@ -569,6 +678,13 @@ pub fn prepare_ipa_in(temp_root: &Path, options: &IpaInstallOptions) -> Result<P
     validate_bundle_id(&target_bundle_id)?;
 
     let removed: HashSet<_> = options.removed_extensions.iter().cloned().collect();
+    for extension in &removed {
+        if !parsed.extension_info_paths.contains_key(extension) {
+            return Err(AppError::Misc(format!(
+                "The selected extension {extension} is not present in this IPA. Inspect the IPA again before preparing it."
+            )));
+        }
+    }
     let custom_icon = options
         .custom_icon_path
         .as_ref()
@@ -596,9 +712,14 @@ pub fn prepare_ipa_in(temp_root: &Path, options: &IpaInstallOptions) -> Result<P
         .unwrap_or_default()
         .as_nanos();
     let output_path = prepared_dir.join(format!("prepared-{timestamp}.ipa"));
-    let output_file = File::create(&output_path).map_err(|e| {
-        AppError::Filesystem("Unable to create prepared IPA".to_string(), e.to_string())
-    })?;
+    let output_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&output_path)
+        .map_err(|e| {
+            AppError::Filesystem("Unable to create prepared IPA".to_string(), e.to_string())
+        })?;
+    let mut incomplete = IncompleteIpa(Some(output_path.clone()));
     let mut output = ZipWriter::new(output_file);
 
     for index in 0..source.len() {
@@ -717,12 +838,22 @@ pub fn prepare_ipa_in(temp_root: &Path, options: &IpaInstallOptions) -> Result<P
                 AppError::Misc(format!("Invalid extension plist at {extension_root}: {e}"))
             })?;
             if let Some(original_id) = plist_string(&info, "CFBundleIdentifier")
-                && let Some(suffix) = original_id.strip_prefix(&parsed.info.bundle_id)
+                && let Some(suffix) =
+                    original_id.strip_prefix(&format!("{}.", parsed.info.bundle_id))
             {
                 info.insert(
                     "CFBundleIdentifier".to_string(),
-                    Value::String(format!("{target_bundle_id}{suffix}")),
+                    Value::String(format!("{target_bundle_id}.{suffix}")),
                 );
+            }
+            for key in [
+                "WKCompanionAppBundleIdentifier",
+                "NSExtensionContainingAppBundleIdentifier",
+            ] {
+                if info.get(key).and_then(Value::as_string) == Some(parsed.info.bundle_id.as_str())
+                {
+                    info.insert(key.into(), Value::String(target_bundle_id.clone()));
+                }
             }
             output.start_file(&name, file_options).map_err(|e| {
                 AppError::Filesystem(
@@ -769,6 +900,7 @@ pub fn prepare_ipa_in(temp_root: &Path, options: &IpaInstallOptions) -> Result<P
     output.finish().map_err(|e| {
         AppError::Filesystem("Unable to finish prepared IPA".to_string(), e.to_string())
     })?;
+    incomplete.0 = None;
     Ok(output_path)
 }
 
@@ -776,12 +908,37 @@ pub fn export_prepared_ipa(
     options: &IpaInstallOptions,
     destination: &Path,
 ) -> Result<u64, AppError> {
-    if destination.extension().and_then(|value| value.to_str()) != Some("ipa") {
+    if !has_ipa_extension(destination) {
         return Err(AppError::Misc(
             "The exported file must use the .ipa extension".to_string(),
         ));
     }
-    if let Some(parent) = destination.parent() {
+    let source = Path::new(&options.app_path);
+    let same_path = source
+        .canonicalize()
+        .ok()
+        .zip(destination.canonicalize().ok())
+        .is_some_and(|(source, destination)| source == destination);
+    #[cfg(unix)]
+    let same_path = same_path || {
+        use std::os::unix::fs::MetadataExt;
+        source
+            .metadata()
+            .ok()
+            .zip(destination.metadata().ok())
+            .is_some_and(|(source, destination)| {
+                source.dev() == destination.dev() && source.ino() == destination.ino()
+            })
+    };
+    if same_path {
+        return Err(AppError::Misc(
+            "Choose a different export path to preserve the original IPA.".into(),
+        ));
+    }
+    if let Some(parent) = destination
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent).map_err(|error| {
             AppError::Filesystem(
                 "Unable to create the export folder".to_string(),
@@ -790,13 +947,40 @@ pub fn export_prepared_ipa(
         })?;
     }
     let prepared = prepare_ipa_in(&std::env::temp_dir(), options)?;
-    let result = fs::copy(&prepared, destination).map_err(|error| {
-        AppError::Filesystem(
-            "Unable to export the modified IPA".to_string(),
-            error.to_string(),
-        )
-    });
-    let _ = fs::remove_file(prepared);
+    let _prepared_cleanup = IncompleteIpa(Some(prepared.clone()));
+    let export_name = destination
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Export.ipa");
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let staging = destination.with_file_name(format!(".{export_name}.{stamp}.tmp"));
+    let result = (|| {
+        let mut staged_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staging)
+            .map_err(|error| {
+                AppError::Filesystem("Unable to create IPA export".into(), error.to_string())
+            })?;
+        let _staging_cleanup = IncompleteIpa(Some(staging.clone()));
+        let mut input = File::open(&prepared).map_err(|error| {
+            AppError::Filesystem("Unable to read prepared IPA".into(), error.to_string())
+        })?;
+        let size = std::io::copy(&mut input, &mut staged_file).map_err(|error| {
+            AppError::Filesystem("Unable to write IPA export".into(), error.to_string())
+        })?;
+        staged_file.sync_all().map_err(|error| {
+            AppError::Filesystem("Unable to finish IPA export".into(), error.to_string())
+        })?;
+        drop(staged_file);
+        fs::rename(&staging, destination).map_err(|error| {
+            AppError::Filesystem("Unable to save IPA export".into(), error.to_string())
+        })?;
+        Ok(size)
+    })();
     result
 }
 
@@ -825,6 +1009,145 @@ mod tests {
         time::SystemTime,
     };
     use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
+
+    fn fixture(entries: &[(&str, &[u8])], suffix: &str) -> std::path::PathBuf {
+        static NEXT_FIXTURE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let unique = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let sequence = NEXT_FIXTURE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "slip-archive-{}-{unique}-{sequence}.{suffix}",
+            std::process::id()
+        ));
+        let mut zip = ZipWriter::new(File::create(&path).unwrap());
+        for (name, data) in entries {
+            zip.start_file(*name, SimpleFileOptions::default()).unwrap();
+            zip.write_all(data).unwrap();
+        }
+        zip.finish().unwrap();
+        path
+    }
+
+    #[test]
+    fn rejects_unsafe_archive_paths_and_multiple_main_apps() {
+        let mut info = Dictionary::new();
+        info.insert(
+            "CFBundleIdentifier".into(),
+            Value::String("com.example.Test".into()),
+        );
+        let bytes = plist_bytes(&info).unwrap();
+        for unsafe_path in [
+            "../outside",
+            "/absolute",
+            "Payload/../outside",
+            "Payload\\Test.app\\Other",
+        ] {
+            let path = fixture(
+                &[
+                    ("Payload/Test.app/Info.plist", &bytes),
+                    (unsafe_path, b"bad"),
+                ],
+                "ipa",
+            );
+            assert!(parse_ipa(&path).is_err(), "accepted {unsafe_path}");
+            std::fs::remove_file(path).unwrap();
+        }
+        let path = fixture(
+            &[
+                ("Payload/One.app/Info.plist", &bytes),
+                ("Payload/Two.app/file", b"other"),
+            ],
+            "ipa",
+        );
+        assert!(parse_ipa(&path).is_err());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn supports_uppercase_ipa_and_preserves_source_on_export() {
+        let mut info = Dictionary::new();
+        info.insert(
+            "CFBundleIdentifier".into(),
+            Value::String("com.example.Test".into()),
+        );
+        let bytes = plist_bytes(&info).unwrap();
+        let path = fixture(&[("Payload/Test.app/Info.plist", &bytes)], "IPA");
+        assert!(parse_ipa(&path).is_ok());
+        let original = std::fs::read(&path).unwrap();
+        let options = IpaInstallOptions {
+            app_path: path.to_string_lossy().into_owned(),
+            display_name: None,
+            bundle_id: None,
+            removed_extensions: vec![],
+            custom_icon_path: None,
+            increased_memory_limit: false,
+            minimum_os_version: None,
+            remove_supported_devices: false,
+            enable_file_sharing: false,
+            plist_overrides: vec![],
+        };
+        assert!(super::export_prepared_ipa(&options, &path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn signing_extraction_preserves_small_assets_and_isolates_archives() {
+        use isideload::sideload::application::Application;
+
+        let mut info = Dictionary::new();
+        info.insert(
+            "CFBundleIdentifier".into(),
+            Value::String("com.example.Test".into()),
+        );
+        let bytes = plist_bytes(&info).unwrap();
+        let asset = b"This is a real text asset, not a symbolic link.";
+        let library = b"small library bytes";
+        let path = fixture(
+            &[
+                ("Payload/Test.app/Info.plist", &bytes),
+                ("Payload/Test.app/notice.txt", asset),
+                ("Payload/Test.app/tiny.dylib", library),
+            ],
+            "ipa",
+        );
+        let first = Application::new(path.clone()).unwrap();
+        let second = Application::new(path.clone()).unwrap();
+        assert_ne!(first.bundle.bundle_dir, second.bundle.bundle_dir);
+        for application in [first, second] {
+            let directory = application.bundle.bundle_dir;
+            assert_eq!(std::fs::read(directory.join("notice.txt")).unwrap(), asset);
+            assert_eq!(
+                std::fs::read(directory.join("tiny.dylib")).unwrap(),
+                library
+            );
+            std::fs::remove_dir_all(directory.parent().unwrap().parent().unwrap()).unwrap();
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn validates_macho_load_commands_and_little_endian_fat64() {
+        let mut thin = vec![0u8; 56];
+        thin[..4].copy_from_slice(&[0xcf, 0xfa, 0xed, 0xfe]);
+        thin[16..20].copy_from_slice(&1u32.to_le_bytes());
+        thin[20..24].copy_from_slice(&24u32.to_le_bytes());
+        thin[32..36].copy_from_slice(&0x2cu32.to_le_bytes());
+        thin[36..40].copy_from_slice(&24u32.to_le_bytes());
+        thin[48..52].copy_from_slice(&1u32.to_le_bytes());
+        assert_eq!(super::macho_encryption_status(&thin), "Encrypted");
+        let mut fat = vec![0u8; 40];
+        fat[..4].copy_from_slice(&[0xbf, 0xba, 0xfe, 0xca]);
+        fat[4..8].copy_from_slice(&1u32.to_le_bytes());
+        fat[16..24].copy_from_slice(&40u64.to_le_bytes());
+        fat[24..32].copy_from_slice(&(thin.len() as u64).to_le_bytes());
+        fat.extend_from_slice(&thin);
+        assert_eq!(super::macho_encryption_status(&fat), "Encrypted");
+        thin[36..40].copy_from_slice(&8u32.to_le_bytes());
+        assert_eq!(super::macho_encryption_status(&thin), "Unknown");
+    }
 
     #[test]
     fn validates_bundle_ids() {

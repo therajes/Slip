@@ -1,0 +1,4 @@
+*
+!Dockerfile
+!compatibility.patch
+!bootstrap-ca-bundle.pem

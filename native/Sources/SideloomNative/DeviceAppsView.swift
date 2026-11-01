@@ -1,8 +1,14 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Jordy Spruit (Droppy)
+// Droppy Code by Jordy Spruit (Droppy), https://getdroppycode.app
+// Modified by Slip: native sideloading interface, controls and compatibility.
+
 import AppKit
 import SwiftUI
 
 struct DeviceAppsView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var appearance: AppearanceController
     @State private var search = ""
     @State private var selectedBundleIDs: Set<String> = []
     @State private var pendingUninstall: Set<String> = []
@@ -34,22 +40,24 @@ struct DeviceAppsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 20) {
             PageHeader(
                 eyebrow: "DEVICE MANAGEMENT",
                 title: "iPhone Apps",
-                subtitle: "Select apps to copy identifiers, refresh managed installs, or uninstall them safely."
+                subtitle: "A home for the apps on your iPhone. Select an app to manage it."
             )
 
-            VStack(spacing: 14) {
+            VStack(spacing: 16) {
                 controls
                 if !model.installedApps.isEmpty { selectionBar }
                 content
             }
-            .padding(.horizontal, 28)
-            .padding(.bottom, 24)
         }
-        .background(SlipBackdrop())
+        .padding(28)
+        .frame(maxWidth: 860)
+        .frame(maxWidth: .infinity)
+        .buttonStyle(WorkspaceActionButtonStyle())
+        .animation(appearance.motionAllowed ? .smooth(duration: 0.2) : nil, value: selectedBundleIDs)
         .onChange(of: model.selectedDevice) { _, _ in
             selectedBundleIDs.removeAll()
             model.installedApps = []
@@ -74,15 +82,15 @@ struct DeviceAppsView: View {
 
     private var controls: some View {
         HStack(spacing: 12) {
+            DeviceConnectionGlyph(device: model.selectedDevice, height: 24)
             Picker("iPhone", selection: $model.selectedDevice) {
                 ForEach(model.devices) { device in
                     Text("\(device.marketingName) · \(device.connectionType)")
                         .tag(Optional(device))
                 }
             }
-            .frame(maxWidth: 340)
-            TextField("Search apps or bundle IDs", text: $search)
-                .textFieldStyle(.roundedBorder)
+            .frame(maxWidth: 245)
+            SidebarSearchField(text: $search, prompt: "Search apps or bundle IDs")
             Button {
                 Task { await model.loadInstalledApps() }
             } label: {
@@ -91,6 +99,8 @@ struct DeviceAppsView: View {
             }
             .disabled(model.selectedDevice == nil || model.isLoadingInstalledApps || model.isUninstallingApps)
         }
+        .padding(12)
+        .background(Chrome.overlay(0.03), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var selectionBar: some View {
@@ -98,7 +108,7 @@ struct DeviceAppsView: View {
             SlipStatusPill(
                 title: selectedBundleIDs.isEmpty ? "Select apps below" : "\(selectedBundleIDs.count) selected",
                 symbol: selectedBundleIDs.isEmpty ? "checklist.unchecked" : "checkmark.circle.fill",
-                tint: selectedBundleIDs.isEmpty ? .secondary : .accentColor
+                tint: selectedBundleIDs.isEmpty ? .secondary : Chrome.primaryText
             )
             Button(filteredBundleIDs.isSubset(of: selectedBundleIDs) ? "Clear Visible" : "Select Visible") {
                 if filteredBundleIDs.isSubset(of: selectedBundleIDs) {
@@ -134,74 +144,86 @@ struct DeviceAppsView: View {
             }
             .disabled(selectedBundleIDs.isEmpty || model.isUninstallingApps)
         }
-        .padding(12)
-        .slipGlassSurface(tint: selectedBundleIDs.isEmpty ? nil : Color.accentColor.opacity(0.08), cornerRadius: 16)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .slipGlassSurface(cornerRadius: 16)
     }
 
     @ViewBuilder
     private var content: some View {
-        if model.installedApps.isEmpty && !model.isLoadingInstalledApps {
-            ContentUnavailableView {
-                Label("No app inventory loaded", systemImage: "iphone.gen3")
-            } description: {
-                Text("Connect and unlock your iPhone, then choose Load Apps.")
+        if model.installedApps.isEmpty {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                WorkspaceEmptyState(symbol: "square.grid.2x2", title: model.isLoadingInstalledApps ? "Getting your apps…" : "Your iPhone’s app library",
+                                    message: model.selectedDevice == nil ? "Connect and unlock your iPhone to see its apps here." : "See what’s installed, refresh your managed apps, or make room for something new.")
+                if model.isLoadingInstalledApps {
+                    ProgressView().controlSize(.small)
+                } else if model.selectedDevice != nil {
+                    Button {
+                        appearance.selectionFeedback()
+                        Task { await model.loadInstalledApps() }
+                    } label: { Label("Load apps", systemImage: "square.grid.2x2") }
+                }
+                Spacer(minLength: 30)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List(filteredApps) { app in
-                appRow(app)
-                    .contentShape(Rectangle())
-                    .onTapGesture { toggle(app.bundleId) }
-                    .listRowBackground(Color.clear)
-            }
-            .listStyle(.inset)
-            .scrollContentBackground(.hidden)
-            .scrollIndicators(.hidden)
-            .overlay {
-                if filteredApps.isEmpty {
-                    ContentUnavailableView.search(text: search)
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    if filteredApps.isEmpty {
+                        WorkspaceEmptyState(symbol: "magnifyingglass", title: "No matching apps",
+                                            message: "Try a different name or app identifier.")
+                    }
+                    ForEach(filteredApps) { app in
+                        Button { toggle(app.bundleId) } label: { appRow(app) }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(selectedBundleIDs.contains(app.bundleId) ? .isSelected : [])
+                            .contextMenu {
+                                Button("Copy app identifier") { model.copyBundleIDs([app.bundleId]) }
+                            }
+                    }
                 }
             }
+            .scrollIndicators(.hidden)
         }
     }
 
     private func appRow(_ app: InstalledAppInfo) -> some View {
         let selected = selectedBundleIDs.contains(app.bundleId)
         return HStack(spacing: 14) {
-            Button { toggle(app.bundleId) } label: {
-                Image(systemName: selected ? "checkmark.square.fill" : "square")
-                    .font(.title3)
-                    .slipDimensionalSymbol(strength: 0.72)
-                    .foregroundStyle(selected ? Color.accentColor : .secondary)
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(selected ? "Deselect \(app.name)" : "Select \(app.name)")
+            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(selected ? Chrome.primaryText : Chrome.secondaryText)
+                .contentTransition(.symbolEffect(.replace))
+                .accessibilityHidden(true)
             InstalledAppIcon(app: app, isManaged: managedRecipe(for: app) != nil)
             VStack(alignment: .leading, spacing: 3) {
                 Text(app.name.isEmpty ? app.bundleId : app.name).fontWeight(.semibold)
-                Text(app.bundleId).font(.caption.monospaced()).foregroundStyle(.secondary)
+                Text(app.bundleId).font(.caption.monospaced()).foregroundStyle(Color.primary.opacity(0.7))
             }
             Spacer()
             if !app.version.isEmpty {
-                Text("\(app.version) (\(app.buildVersion))")
+                Text(app.buildVersion.isEmpty ? app.version : "\(app.version) (\(app.buildVersion))")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.primary.opacity(0.7))
             }
             if let recipe = managedRecipe(for: app) {
                 Text(recipe.status)
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .glassEffectIfAvailable(tint: .green.opacity(0.15))
+                    .foregroundStyle(.green)
+                    .slipGlassSurface(cornerRadius: 999)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(selected ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Chrome.overlay(selected ? 0.08 : 0.03), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func toggle(_ bundleID: String) {
+        appearance.selectionFeedback()
         if selectedBundleIDs.contains(bundleID) { selectedBundleIDs.remove(bundleID) }
         else { selectedBundleIDs.insert(bundleID) }
     }
@@ -242,15 +264,11 @@ private struct InstalledAppIcon: View {
                     .frame(width: 40, height: 40)
                     .clipped()
             } else {
-                LinearGradient(
-                    colors: [Color.accentColor.opacity(0.72), .cyan.opacity(0.34), .white.opacity(0.16)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.primary.opacity(0.065))
                 Text(initials)
                     .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.28), radius: 1, y: 1)
+                    .foregroundStyle(.primary)
             }
         }
         .frame(width: 40, height: 40)
@@ -258,7 +276,7 @@ private struct InstalledAppIcon: View {
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(.white.opacity(0.35), lineWidth: 0.8)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 0.8)
         }
         .overlay(alignment: .bottomTrailing) {
             if isManaged {
@@ -270,16 +288,6 @@ private struct InstalledAppIcon: View {
                     .accessibilityHidden(true)
             }
         }
-        .shadow(color: .white.opacity(0.16), radius: 1, x: -0.5, y: -0.5)
-        .shadow(color: .black.opacity(0.30), radius: 4, y: 2)
         .accessibilityLabel("\(app.name.isEmpty ? app.bundleId : app.name) icon")
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func glassEffectIfAvailable(tint: Color) -> some View {
-        if #available(macOS 26.0, *) { glassEffect(.regular.tint(tint), in: Capsule()) }
-        else { background(.thinMaterial, in: Capsule()) }
     }
 }

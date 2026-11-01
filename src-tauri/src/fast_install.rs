@@ -23,7 +23,8 @@ use crate::error::AppError;
 use crate::operation::Operation;
 
 const REMOTE_IPA: &str = "PublicStaging/Sideloom.ipa";
-const TRANSFER_CHUNK: usize = 1024 * 1024;
+const TRANSFER_CHUNK: usize = 4 * 1024 * 1024; // 4 MB chunks for faster USB throughput
+
 
 fn zip_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")

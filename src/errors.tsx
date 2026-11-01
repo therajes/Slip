@@ -49,7 +49,32 @@ export type ErrorVariant = keyof typeof errorSuggestionKeys;
 export type AppError = {
   type: ErrorVariant;
   message: string;
+  /** Clean plain-English description produced by the backend. */
+  humanMessage?: string;
 };
+
+/**
+ * Returns the best human-readable error description available.
+ * Prefers the backend-generated humanMessage, then falls back to
+ * extracting a clean first sentence from the raw chain.
+ */
+export const getHumanMessage = (error: AppError): string => {
+  if (error.humanMessage && error.humanMessage.trim().length > 0) {
+    return error.humanMessage;
+  }
+  // Fallback: strip the rootcause chain and return the first meaningful line
+  const lines = error.message.split("\n").map((l) => l.trim());
+  const best = lines.find(
+    (l) =>
+      l.length > 0 &&
+      !l.startsWith("Caused by") &&
+      !l.startsWith("Stack") &&
+      !l.startsWith("note:") &&
+      !l.startsWith("●"),
+  );
+  return best ?? error.message.split("\n")[0]?.trim() ?? error.message;
+};
+
 
 export const isErrorVariant = (value: string): value is ErrorVariant => {
   return value in errorSuggestionKeys;

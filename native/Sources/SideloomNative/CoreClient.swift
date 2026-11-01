@@ -27,19 +27,33 @@ private final class LineBuffer: @unchecked Sendable {
 
 private final class InstallStreamState: @unchecked Sendable {
     private let lock = NSLock()
-    private var receivedError = false
+    private var terminalEvents: [CoreEvent] = []
+    private var cancelled = false
 
-    func record(_ event: CoreEvent) {
-        guard event.type == "error" else { return }
+    func record(_ event: CoreEvent) -> Bool {
+        guard event.type == "error" || event.type == "completed" else { return true }
         lock.lock()
-        receivedError = true
+        terminalEvents.append(event)
+        lock.unlock()
+        return false
+    }
+
+    var result: [CoreEvent] {
+        lock.lock()
+        defer { lock.unlock() }
+        return terminalEvents
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
         lock.unlock()
     }
 
-    var hasReceivedError: Bool {
+    var isCancelled: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return receivedError
+        return cancelled
     }
 }
 
@@ -48,8 +62,15 @@ final class CoreClient: @unchecked Sendable {
     private var process: Process?
     private var inputPipe: Pipe?
     private var input: FileHandle?
+    private var streamState: InstallStreamState?
+    private let executableOverride: URL?
+
+    init(executableURL: URL? = nil) {
+        executableOverride = executableURL
+    }
 
     private var coreURL: URL {
+        if let executableOverride { return executableOverride }
         if let bundled = Bundle.main.url(forResource: "sideloom-core", withExtension: nil) {
             return bundled
         }
@@ -66,13 +87,15 @@ final class CoreClient: @unchecked Sendable {
             process.standardOutput = output
             process.standardError = errors
             try process.run()
+            let outputTask = Task.detached { output.fileHandleForReading.readDataToEndOfFile() }
+            let errorTask = Task.detached { errors.fileHandleForReading.readDataToEndOfFile() }
             process.waitUntilExit()
-            let data = output.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errors.fileHandleForReading.readDataToEndOfFile()
+            let data = await outputTask.value
+            let errorData = await errorTask.value
             guard process.terminationStatus == 0 else {
-                let message = String(data: data, encoding: .utf8)
-                    ?? String(data: errorData, encoding: .utf8)
-                    ?? "Slip core failed"
+                let outputText = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let errorText = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let message = outputText?.isEmpty == false ? outputText! : (errorText?.isEmpty == false ? errorText! : "Slip core failed")
                 if let event = try? JSONDecoder().decode(CoreEvent.self, from: Data(message.utf8)),
                    let detail = event.message {
                     throw SideloomError.message(detail)
@@ -102,13 +125,15 @@ final class CoreClient: @unchecked Sendable {
             try process.run()
             try stdin.fileHandleForWriting.write(contentsOf: encoded)
             try stdin.fileHandleForWriting.close()
+            let outputTask = Task.detached { output.fileHandleForReading.readDataToEndOfFile() }
+            let errorTask = Task.detached { errors.fileHandleForReading.readDataToEndOfFile() }
             process.waitUntilExit()
-            let data = output.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errors.fileHandleForReading.readDataToEndOfFile()
+            let data = await outputTask.value
+            let errorData = await errorTask.value
             guard process.terminationStatus == 0 else {
-                let message = String(data: data, encoding: .utf8)
-                    ?? String(data: errorData, encoding: .utf8)
-                    ?? "Slip core failed"
+                let outputText = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let errorText = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let message = outputText?.isEmpty == false ? outputText! : (errorText?.isEmpty == false ? errorText! : "Slip core failed")
                 if let event = try? JSONDecoder().decode(CoreEvent.self, from: Data(message.utf8)),
                    let detail = event.message {
                     throw SideloomError.message(detail)
@@ -124,72 +149,118 @@ final class CoreClient: @unchecked Sendable {
     }
 
     func installStream(request: InstallRequest) throws -> AsyncThrowingStream<CoreEvent, Error> {
+        try authenticatedStream(command: "install", request: request)
+    }
+
+    func loginStream(request: LoginAccountRequest) throws -> AsyncThrowingStream<CoreEvent, Error> {
+        try authenticatedStream(command: "login", request: request)
+    }
+
+    func authenticatedStream<T: Encodable>(command: String, request: T) throws -> AsyncThrowingStream<CoreEvent, Error> {
+        let encoded = try JSONEncoder().encode(request) + Data([0x0A])
         let process = Process()
         let stdout = Pipe()
         let stderr = Pipe()
         let stdin = Pipe()
         process.executableURL = coreURL
-        process.arguments = ["install"]
+        process.arguments = [command]
         process.standardOutput = stdout
         process.standardError = stderr
         process.standardInput = stdin
+        let state = InstallStreamState()
         lock.lock()
+        guard self.process == nil else {
+            lock.unlock()
+            throw SideloomError.message("Another Apple Account operation is running. Wait for it to finish or cancel it first.")
+        }
         self.process = process
         self.inputPipe = stdin
         self.input = stdin.fileHandleForWriting
+        self.streamState = state
         lock.unlock()
 
         return AsyncThrowingStream { continuation in
             let buffer = LineBuffer()
-            let state = InstallStreamState()
+            let readers = DispatchGroup()
             let emitLines: @Sendable ([Data]) -> Void = { lines in
                 for line in lines {
                     if let event = try? JSONDecoder().decode(CoreEvent.self, from: line) {
-                        state.record(event)
-                        continuation.yield(event)
+                        if state.record(event) { continuation.yield(event) }
                     }
                 }
             }
-            stdout.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                guard !chunk.isEmpty else { return }
-                emitLines(buffer.append(chunk))
+            continuation.onTermination = { [weak self] reason in
+                if case .cancelled = reason { self?.cancel(process) }
             }
+            readers.enter()
+            readers.enter()
             process.terminationHandler = { [weak self] process in
-                stdout.fileHandleForReading.readabilityHandler = nil
-                emitLines(buffer.append(stdout.fileHandleForReading.readDataToEndOfFile()))
-                if let finalLine = buffer.finish() {
-                    emitLines([finalLine])
+                readers.notify(queue: .global(qos: .userInitiated)) {
+                    // Release the pipe before delivering a terminal event so an
+                    // immediate retry cannot target the previous operation.
+                    self?.release(process)
+                    let result = state.result
+                    if state.isCancelled {
+                        continuation.finish(throwing: CancellationError())
+                    } else if result.contains(where: { $0.type == "error" }) {
+                        for event in result where event.type == "error" { continuation.yield(event) }
+                        continuation.finish()
+                    } else if process.terminationStatus == 0 && result.contains(where: { $0.type == "completed" }) {
+                        for event in result { continuation.yield(event) }
+                        continuation.finish()
+                    } else {
+                        continuation.finish(throwing: SideloomError.message(
+                            "Slip’s signing engine stopped before confirming the operation (exit \(process.terminationStatus)). Try again; see Activity for the last completed step."
+                        ))
+                    }
                 }
-                let errorText = String(
-                    data: stderr.fileHandleForReading.readDataToEndOfFile(),
-                    encoding: .utf8
-                )?.trimmingCharacters(in: .whitespacesAndNewlines)
-                self?.lock.lock()
-                self?.process = nil
-                self?.inputPipe = nil
-                self?.input = nil
-                self?.lock.unlock()
-                if process.terminationStatus == 0 {
-                    continuation.finish()
-                } else if state.hasReceivedError {
-                    continuation.finish()
-                } else {
-                    continuation.finish(throwing: SideloomError.message(
-                        errorText?.isEmpty == false ? errorText! : "Installation failed"
-                    ))
-                }
-            }
-            continuation.onTermination = { [weak self] _ in
-                self?.cancel()
             }
             do {
                 try process.run()
-                try self.send(request)
+                // One reader owns stdout until EOF. This avoids racing a readability
+                // callback against process termination and losing the last response.
+                DispatchQueue.global(qos: .userInitiated).async {
+                    while true {
+                        let chunk = stdout.fileHandleForReading.availableData
+                        if chunk.isEmpty { break }
+                        emitLines(buffer.append(chunk))
+                    }
+                    if let finalLine = buffer.finish() { emitLines([finalLine]) }
+                    readers.leave()
+                }
+                DispatchQueue.global(qos: .utility).async {
+                    // Drain stderr without retaining raw third-party responses,
+                    // which can contain authentication material.
+                    while !stderr.fileHandleForReading.availableData.isEmpty {}
+                    readers.leave()
+                }
+                try stdin.fileHandleForWriting.write(contentsOf: encoded)
             } catch {
+                self.cancel(process)
+                if !process.isRunning { self.release(process) }
                 continuation.finish(throwing: error)
             }
         }
+    }
+
+    private func release(_ process: Process) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard self.process === process else { return }
+        try? input?.close()
+        self.process = nil
+        inputPipe = nil
+        input = nil
+        streamState = nil
+    }
+
+    private func cancel(_ process: Process) {
+        lock.lock()
+        let handle = self.process === process ? input : nil
+        if self.process === process { streamState?.cancel() }
+        lock.unlock()
+        try? handle?.close()
+        if process.isRunning { process.terminate() }
     }
 
     func send<T: Encodable>(_ response: T) throws {
@@ -198,7 +269,7 @@ final class CoreClient: @unchecked Sendable {
         let handle = input
         lock.unlock()
         guard let handle else {
-            throw SideloomError.message("No installation is running")
+            throw SideloomError.message("No Apple Account operation is running")
         }
         try handle.write(contentsOf: data)
     }
@@ -207,6 +278,7 @@ final class CoreClient: @unchecked Sendable {
         lock.lock()
         let process = self.process
         let input = self.input
+        streamState?.cancel()
         lock.unlock()
         try? input?.close()
         if process?.isRunning == true { process?.terminate() }
@@ -216,6 +288,13 @@ final class CoreClient: @unchecked Sendable {
 private struct TwoFactorResponse: Encodable {
     let code: String?
     let cancel: Bool
+    let resend: Bool
+
+    init(code: String? = nil, cancel: Bool = false, resend: Bool = false) {
+        self.code = code
+        self.cancel = cancel
+        self.resend = resend
+    }
 }
 
 private struct CertificateResponse: Encodable {
@@ -225,10 +304,25 @@ private struct CertificateResponse: Encodable {
 
 extension CoreClient {
     func submitTwoFactor(_ code: String?) throws {
-        try send(TwoFactorResponse(code: code, cancel: code == nil))
+        try send(TwoFactorResponse(code: code, cancel: code == nil, resend: false))
+    }
+
+    func resendTwoFactor() throws {
+        try send(TwoFactorResponse(code: nil, cancel: false, resend: true))
     }
 
     func submitCertificates(_ serials: [String]?) throws {
         try send(CertificateResponse(serials: serials, cancel: serials == nil))
+    }
+}
+
+private struct TwoFactorMethodResponse: Encodable {
+    let numberId: UInt32?
+    let sendToDevices: Bool
+}
+
+extension CoreClient {
+    func selectTwoFactorMethod(numberID: UInt32?) throws {
+        try send(TwoFactorMethodResponse(numberId: numberID, sendToDevices: numberID == nil))
     }
 }

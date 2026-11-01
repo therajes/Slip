@@ -120,7 +120,7 @@ extension AppModel {
             switch item.valueType {
             case "Boolean": valid = value == "true" || value == "false"
             case "Integer": valid = Int64(value) != nil
-            case "Real": valid = Double(value) != nil
+            case "Real": valid = Double(value)?.isFinite == true
             default: valid = true
             }
             if !valid {
@@ -147,7 +147,7 @@ extension AppModel {
             result.append(.init(id: "account", title: "Choose an Apple Account", detail: "Add one in Apple Accounts; its password stays in Keychain.", symbol: "person.badge.key", level: .blocking))
         }
         if ipa.encryptionStatus == "Encrypted" {
-            result.append(.init(id: "encrypted", title: "App Store encryption detected", detail: "This IPA can be signed but will not launch. Use a legitimately decrypted IPA.", symbol: "lock.fill", level: .blocking))
+            result.append(.init(id: "encrypted", title: "App Store encryption detected", detail: "Choose a decrypted IPA you are authorized to install. Encrypted apps cannot be re-signed.", symbol: "lock.fill", level: .blocking))
         }
         if let device = selectedDevice,
            let minimum = effectiveMinimumOS,
@@ -161,6 +161,15 @@ extension AppModel {
         if effectiveAppIDCost > 1 {
             result.append(.init(id: "app-ids", title: "This setup uses " + String(effectiveAppIDCost) + " App IDs", detail: "Remove optional extensions to conserve a free Apple Account’s quota.", symbol: "square.stack.3d.up", level: .warning))
         }
+        if let refreshingName = currentlyRefreshingAppName {
+            result.append(.init(
+                id: "refreshing",
+                title: "App Refresh in Progress",
+                detail: "Slip is currently refreshing \(refreshingName). Please wait for it to finish before signing and installing.",
+                symbol: "arrow.triangle.2.circlepath",
+                level: .blocking
+            ))
+        }
         if result.isEmpty {
             result.append(.init(id: "ready", title: "Ready to sign and install", detail: "Slip validated the IPA, destination, account, and customizations.", symbol: "checkmark.seal.fill", level: .ready))
         }
@@ -172,11 +181,11 @@ extension AppModel {
     }
 
     var canInstall: Bool {
-        !isInstalling && blockingInstallIssue == nil
+        !workspaceIsBusy && currentlyRefreshingAppName == nil && blockingInstallIssue == nil
     }
 
     var canExport: Bool {
-        ipa != nil && !customizationIssues.contains { $0.level == .blocking } && ipa?.encryptionStatus != "Encrypted"
+        ipa != nil && !workspaceIsBusy && !customizationIssues.contains { $0.level == .blocking } && ipa?.encryptionStatus != "Encrypted"
     }
 
     private func isValidBundleID(_ value: String) -> Bool {
@@ -187,8 +196,9 @@ extension AppModel {
 
     private func versionComponents(_ value: String) -> [Int]? {
         let parts = value.split(separator: ".", omittingEmptySubsequences: false)
-        guard (1...3).contains(parts.count), parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isNumber) }) else { return nil }
-        return parts.compactMap { Int($0) }
+        guard (1...3).contains(parts.count), parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy({ $0.isASCII && $0.isNumber }) }) else { return nil }
+        let values = parts.compactMap { Int($0) }
+        return values.count == parts.count ? values : nil
     }
 
     private func compareVersions(_ left: String, _ right: String) -> ComparisonResult? {

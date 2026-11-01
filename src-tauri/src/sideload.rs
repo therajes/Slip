@@ -106,7 +106,16 @@ pub async fn custom_sideload_operation(
     info!(ipa = %options.app_path, "Custom sideload requested");
     let op = Operation::new("custom_sideload".to_string(), &window);
     op.start("prepare")?;
-    let prepared_path = op.fail_if_err("prepare", prepare_ipa(&handle, &options))?;
+    // Run IPA preparation off the async runtime thread to avoid blocking it.
+    let options_for_prepare = options.clone();
+    let handle_for_prepare = handle.clone();
+    let prepared_path = op.fail_if_err(
+        "prepare",
+        tokio::task::spawn_blocking(move || prepare_ipa(&handle_for_prepare, &options_for_prepare))
+            .await
+            .map_err(|e| AppError::Misc(format!("IPA preparation task panicked: {e}")))
+            .and_then(|r| r),
+    )?;
     info!(prepared = %prepared_path.display(), "IPA preparation completed");
     op.complete("prepare")?;
     op.start("sign")?;
@@ -170,13 +179,36 @@ pub async fn custom_sideload_operation(
             .temp_dir()
             .map_err(|error| ("install", AppError::Filesystem("Unable to locate temporary folder".into(), error.to_string())))?
             .join(format!("sideloom-fast-{}-{unique}.ipa", std::process::id()));
-        let install_result = install_signed_app_fast(
-            &provider,
-            &signed_app_path,
-            &optimized_ipa,
-            &window,
-        )
-        .await;
+
+        // Retry the USB transfer up to 3 times with exponential back-off,
+        // mirroring the headless path which already does this.
+        let mut install_result = Err(AppError::Misc("Installation did not start".into()));
+        for attempt in 1u64..=3 {
+            let provider = match get_provider(&device.info).await {
+                Ok(p) => p,
+                Err(error) => {
+                    install_result = Err(error);
+                    if attempt < 3 {
+                        tokio::time::sleep(std::time::Duration::from_secs(attempt * 2)).await;
+                        continue;
+                    }
+                    break;
+                }
+            };
+            install_result = install_signed_app_fast(
+                &provider,
+                &signed_app_path,
+                &optimized_ipa,
+                &window,
+            )
+            .await;
+            if install_result.is_ok() {
+                break;
+            }
+            if attempt < 3 {
+                tokio::time::sleep(std::time::Duration::from_secs(attempt * 2)).await;
+            }
+        }
         let _ = std::fs::remove_dir_all(&signed_app_path);
         let _ = std::fs::remove_file(&optimized_ipa);
         install_result.map_err(|error| ("install", AppError::from(error)))?;

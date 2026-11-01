@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Jordy Spruit (Droppy)
+// Droppy Code by Jordy Spruit (Droppy), https://getdroppycode.app
+// Modified by Slip: native sideloading interface, controls and compatibility.
+
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -21,8 +26,6 @@ struct InstallView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var appearance: AppearanceController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showIPAImporter = false
-    @State private var showIconImporter = false
     @State private var showURLImporter = false
     @State private var remoteIPAURL = ""
     @State private var dropActive = false
@@ -32,49 +35,54 @@ struct InstallView: View {
     private var motion: Bool { appearance.motionAllowed && !reduceMotion }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 20) {
-                PageHeader(
-                    eyebrow: "IPHONE SIDELOADER",
-                    title: "Install",
-                    subtitle: "Inspect, personalize, sign, and transfer—with every requirement checked first."
-                )
-                .padding(.horizontal, -28)
-                .padding(.top, -22)
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    ipaCard
+                        .frame(minHeight: model.ipa == nil ? max(260, geometry.size.height - 95) : 0)
 
-                statusRibbon
-
-                SlipGlassContainer {
-                    HStack(alignment: .top, spacing: 18) {
-                        deviceCard
-                        ipaCard
+                    if model.ipa != nil {
+                        if let notice = model.ipaPreparationNotice {
+                            Label(notice, systemImage: "info.circle")
+                                .font(.callout).foregroundStyle(Chrome.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        statusRibbon
+                        customizationCard
+                            .disabled(model.isInstalling || model.isRunningInstallQueue || model.isImportingLibrary || model.isRestoringWorkspace)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
-                }
 
-                if model.ipa != nil {
-                    customizationCard
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
+                    if model.ipa == nil, let notice = model.libraryNotice {
+                        HStack(spacing: 12) {
+                            Label(notice, systemImage: "info.circle").font(.callout)
+                            Spacer()
+                            Button("Open Library") { NotificationCenter.default.post(name: .showLibrary, object: nil) }
+                                .buttonStyle(WorkspaceActionButtonStyle())
+                        }
+                    }
 
-                readinessCard
+                    readinessCard
+                }
+                .padding(.horizontal, 28)
+                .padding(.bottom, 18)
+                .frame(maxWidth: 900)
+                .frame(maxWidth: .infinity)
             }
-            .padding(28)
-            .padding(.bottom, 92)
+            .scrollIndicators(.hidden)
         }
-        .scrollIndicators(.hidden)
         .background(SlipBackdrop())
+        .dropDestination(for: URL.self) { urls, _ in
+            guard !model.workspaceIsBusy, urls.contains(where: { $0.isFileURL && $0.pathExtension.lowercased() == "ipa" }) else { return false }
+            Task { await model.importIPAs(urls) }
+            return true
+        } isTargeted: { dropActive = $0 }
         .safeAreaInset(edge: .bottom, spacing: 0) { actionDock }
         .animation(motion ? .smooth(duration: 0.28) : nil, value: model.ipa)
         .animation(motion ? .snappy(duration: 0.24) : nil, value: dropActive)
-        .fileImporter(isPresented: $showIPAImporter, allowedContentTypes: [ipaType]) { result in
-            if case .success(let url) = result { Task { await model.loadIPA(url) } }
-        }
-        .fileImporter(isPresented: $showIconImporter, allowedContentTypes: [.png, .jpeg]) { result in
-            if case .success(let url) = result { model.customIconURL = url }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openIPA)) { _ in
-            showIPAImporter = true
-        }
+        .onChange(of: dropActive) { _, active in if active { appearance.selectionFeedback() } }
+        .onChange(of: model.ipa) { _, ipa in if ipa != nil { appearance.completionFeedback() } }
+
         .alert("Download IPA", isPresented: $showURLImporter) {
             TextField("https://example.com/App.ipa", text: $remoteIPAURL)
             Button("Cancel", role: .cancel) { remoteIPAURL = "" }
@@ -89,174 +97,137 @@ struct InstallView: View {
         }
     }
 
-    private var statusRibbon: some View {
-        HStack(spacing: 10) {
-            SlipStatusPill(
-                title: model.selectedDevice.map { "\($0.connectionType) · iOS \($0.version)" } ?? "No iPhone",
-                symbol: model.selectedDevice?.connectionType.lowercased() == "network" ? "wifi" : "iphone",
-                tint: model.selectedDevice == nil ? .secondary : .green
-            )
-            SlipStatusPill(
-                title: model.ipa.map { Int64($0.sizeBytes).formatted(.byteCount(style: .file)) } ?? "No IPA",
-                symbol: "shippingbox",
-                tint: model.ipa == nil ? .secondary : .blue
-            )
-            SlipStatusPill(
-                title: model.selectedAccount.isEmpty ? "No account" : "Account ready",
-                symbol: "person.badge.key",
-                tint: model.selectedAccount.isEmpty ? .secondary : .purple
-            )
-            if model.customizationCount > 0 {
-                SlipStatusPill(title: "\(model.customizationCount) changes", symbol: "slider.horizontal.3", tint: .cyan)
-                    .transition(.scale.combined(with: .opacity))
-            }
-            Spacer()
+    private func homeActionIcon(_ symbol: String, title: String, action: @escaping () -> Void) -> some View {
+        Button {
+            appearance.selectionFeedback()
+            action()
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 32, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Chrome.primaryText)
+                .frame(width: 84, height: 84)
+                .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .slipGlassSurface(interactive: true, cornerRadius: 22)
         }
+        .buttonStyle(.plain)
+        .disabled(model.workspaceIsBusy)
+        .help(title)
+        .accessibilityLabel(title)
     }
 
-    private var deviceCard: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 14) {
-                    if let device = model.selectedDevice {
-                        IPhoneModelPreview(device: device)
-                            .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                    } else {
-                        SlipSymbolTile(symbol: "iphone.gen3", tint: .secondary, size: 52)
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        if let device = model.selectedDevice {
-                            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text(device.displayName)
-                                    .font(.title3.weight(.semibold))
-                                    .lineLimit(1)
-                                if device.showsModelBesideName {
-                                    Text("(\(device.marketingName))")
-                                        .font(.subheadline.weight(.medium))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                        } else {
-                            Text("Connect an iPhone")
-                                .font(.title3.weight(.semibold))
-                        }
-                        Text(model.selectedDevice.map { "\($0.connectionType) connection · iOS \($0.version)" } ?? "Unlock, connect USB, and tap Trust.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button {
-                        Task { await model.refreshDevices() }
-                    } label: {
-                        if model.isRefreshing { ProgressView().controlSize(.small) }
-                        else { Image(systemName: "arrow.clockwise").slipDimensionalSymbol() }
-                    }
-                    .help("Refresh iPhones")
-                    .disabled(model.isRefreshing || model.isInstalling)
-                }
-
-                if !model.devices.isEmpty {
-                    Picker("Destination", selection: $model.selectedDevice) {
-                        ForEach(model.devices) { device in
-                            Text("\(device.displayName)\(device.showsModelBesideName ? " (\(device.marketingName))" : "") · \(device.connectionType)").tag(Optional(device))
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
-                }
-
-                Divider()
-
-                if model.devices.contains(where: { $0.connectionType.caseInsensitiveCompare("Network") == .orderedSame }) {
-                    Label("Trusted Wi‑Fi is ready; use USB when speed matters.", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.caption)
-                } else {
-                    HStack {
-                        Label("Pair Wi‑Fi while connected by USB.", systemImage: "wifi.exclamationmark")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Enable Wi‑Fi") { Task { await model.enableWiFiConnection() } }
-                            .disabled(model.isEnablingWiFi || model.selectedDevice?.connectionType.caseInsensitiveCompare("USB") != .orderedSame)
-                    }
-                }
+    private var statusRibbon: some View {
+        HStack(spacing: 16) {
+            Label(
+                model.selectedDevice.map { "\($0.connectionType) · iOS \($0.version)" } ?? "No iPhone",
+                systemImage: model.selectedDevice?.connectionType.lowercased() == "network" ? "wifi" : "iphone"
+            )
+            Label(
+                model.ipa.map { Int64($0.sizeBytes).formatted(.byteCount(style: .file)) } ?? "No IPA",
+                systemImage: "shippingbox"
+            )
+            Label(model.selectedAccount.isEmpty ? "No account" : "Account ready", systemImage: "person.badge.key")
+            Spacer(minLength: 0)
+            if model.customizationCount > 0 {
+                Text("\(model.customizationCount) changes")
+                    .foregroundStyle(Color.accentColor)
+                    .transition(.opacity)
             }
-            .frame(maxWidth: .infinity, minHeight: 174, alignment: .top)
-        } label: {
-            Label("Destination", systemImage: "cable.connector")
         }
-        .frame(maxWidth: .infinity)
+        .font(.caption)
+        .foregroundStyle(Color.primary.opacity(0.7))
     }
 
     private var ipaCard: some View {
-        GroupBox {
-            ZStack {
-                if let ipa = model.ipa {
-                    VStack(alignment: .leading, spacing: 15) {
-                        HStack(spacing: 14) {
-                            ipaIconPreview(for: ipa)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(ipa.appName).font(.title3.weight(.semibold)).lineLimit(1)
-                                Text(ipa.bundleId).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                            Spacer()
-                            Menu {
-                                Button("Choose Another…") { showIPAImporter = true }
-                                Button("Download from URL…") { showURLImporter = true }
-                                Divider()
-                                Button("Remove IPA", role: .destructive) { model.clearIPA() }
-                            } label: {
-                                Image(systemName: "ellipsis.circle")
-                                    .slipDimensionalSymbol()
-                            }
-                            .menuStyle(.borderlessButton)
+        ZStack {
+            if let ipa = model.ipa {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        ipaIconPreview(for: ipa)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(ipa.appName).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                            Text(ipa.bundleId).font(.caption.monospaced()).foregroundStyle(Color.primary.opacity(0.7)).lineLimit(1)
                         }
-                        HStack(spacing: 9) {
-                            metric(ipa.version, "Version")
-                            metric(ipa.minimumOsVersion ?? "—", "Minimum iOS")
-                            metric("\(model.effectiveAppIDCost)", "App IDs")
+                        Spacer()
+                        Menu {
+                            Button("Choose Another…") { chooseIPAs() }
+                            Button("Download from URL…") { showURLImporter = true }
+                            Divider()
+                            Button("Remove IPA", role: .destructive) { model.clearIPA() }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
                         }
+                        .menuStyle(.borderlessButton)
+                        .disabled(model.workspaceIsBusy)
+                    }
+                    HStack(spacing: 18) {
+                        metric(ipa.version, "Version")
+                        metric(ipa.minimumOsVersion ?? "—", "Minimum iOS")
+                        metric("\(model.effectiveAppIDCost)", "App IDs")
+                        Spacer()
                         if let duration = model.inspectionDuration {
-                            Label("Inspected in \(duration.formatted(.number.precision(.fractionLength(2)))) seconds", systemImage: "bolt.fill")
+                            Label("Inspected in \(duration.formatted(.number.precision(.fractionLength(2)))) s", systemImage: "checkmark.circle")
                                 .font(.caption)
                                 .foregroundStyle(.green)
                         }
                     }
-                } else {
-                    VStack(spacing: 12) {
-                        Image(systemName: model.isInspecting ? "sparkle.magnifyingglass" : "square.and.arrow.down.on.square")
-                            .font(.system(size: 34, weight: .light))
-                            .slipDimensionalSymbol(strength: 1.18)
-                            .foregroundStyle(dropActive ? Color.accentColor : .secondary)
-                            .scaleEffect(dropActive ? 1.12 : 1)
-                        Text(model.isInspecting ? "Inspecting IPA…" : "Drop an IPA")
-                            .font(.title3.weight(.semibold))
-                        Text("Local, private, and validated before signing.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        HStack {
-                            Button("Choose IPA…") { showIPAImporter = true }
-                            Button("From URL…") { showURLImporter = true }
-                        }
-                        if model.isDownloading { ProgressView("Downloading…").controlSize(.small) }
-                    }
-                    .frame(maxWidth: .infinity)
                 }
+            } else {
+                VStack(spacing: 18) {
+                    if let device = model.selectedDevice {
+                        IPhoneModelPreview(device: device)
+                            .id(device.udid + device.connectionType)
+                    } else {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
+                            .resizable().frame(width: 88, height: 88)
+                    }
+                    VStack(spacing: 9) {
+                        Text(model.isInspecting ? "Inspecting your app…" : "Your iPhone. Your apps.")
+                            .font(.system(size: 30, weight: .semibold))
+                        Text(model.selectedDevice.map { "\($0.displayName) is connected. Drop an IPA to make it yours." }
+                             ?? "A calm, native home for your iPhone apps.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Chrome.secondaryText)
+                            .multilineTextAlignment(.center)
+                    }
+                    HStack(spacing: 18) {
+                        homeActionIcon("doc.zipper", title: "Choose an IPA") {
+                            chooseIPAs()
+                        }
+                        homeActionIcon("link", title: "From URL") {
+                            showURLImporter = true
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    Text("Or drop an IPA anywhere in this workspace.")
+                        .font(.system(.callout))
+                        .foregroundStyle(Chrome.secondaryText)
+                    if model.isInspecting && !model.isDownloading {
+                        ProgressView("Checking archive…")
+                            .controlSize(.small)
+                    }
+                }
+                .padding(28)
             }
-            .frame(maxWidth: .infinity, minHeight: 174)
-            .padding(4)
-            .background(dropActive ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 17))
-            .dropDestination(for: URL.self) { urls, _ in
-                guard let url = urls.first(where: { $0.pathExtension.lowercased() == "ipa" }) else { return false }
-                Task { await model.loadIPA(url) }
-                return true
-            } isTargeted: { dropActive = $0 }
-        } label: {
-            Label("IPA", systemImage: "shippingbox")
         }
         .frame(maxWidth: .infinity)
+        .padding(model.ipa == nil ? 0 : 16)
+        .background {
+            if model.ipa != nil {
+                RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Chrome.overlay(0.03))
+            }
+        }
+        .background(dropActive ? Color.accentColor.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            if dropActive {
+                RoundedRectangle(cornerRadius: 16).strokeBorder(Color.accentColor.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard !model.workspaceIsBusy, urls.contains(where: { $0.isFileURL && $0.pathExtension.lowercased() == "ipa" }) else { return false }
+            Task { await model.importIPAs(urls) }
+            return true
+        } isTargeted: { dropActive = $0 }
     }
 
     @ViewBuilder
@@ -270,15 +241,14 @@ struct InstallView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(.white.opacity(0.22), lineWidth: 0.8)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 0.8)
                 }
-                .shadow(color: .black.opacity(0.20), radius: 7, y: 3)
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 .accessibilityLabel("\(ipa.appName) app icon")
         } else {
             SlipSymbolTile(
                 symbol: model.isInspecting ? "sparkle.magnifyingglass" : (ipa.encryptionStatus == "Encrypted" ? "lock.fill" : "app.dashed"),
-                tint: ipa.encryptionStatus == "Encrypted" ? .orange : .blue,
+                tint: ipa.encryptionStatus == "Encrypted" ? .orange : Chrome.accent,
                 size: 52
             )
         }
@@ -287,16 +257,14 @@ struct InstallView: View {
     private func metric(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value).font(.callout.weight(.semibold)).contentTransition(.numericText())
-            Text(label).font(.caption2).foregroundStyle(.tertiary)
+            Text(label).font(.caption).foregroundStyle(Color.primary.opacity(0.7))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var customizationCard: some View {
         GroupBox {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Picker("Customization", selection: $customizationPane) {
                         ForEach(CustomizationPane.allCases) { pane in
@@ -355,7 +323,7 @@ struct InstallView: View {
                         .lineLimit(1)
                     Spacer()
                     if model.customIconURL != nil { Button("Clear") { model.customIconURL = nil } }
-                    Button("Choose…") { showIconImporter = true }
+                    Button("Choose…") { chooseIcon() }
                 }
             }
         }
@@ -366,7 +334,7 @@ struct InstallView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Embedded extensions").fontWeight(.semibold)
-                    Text("Only kept extensions consume App IDs and are signed.").font(.caption).foregroundStyle(.secondary)
+                    Text("Only kept extensions consume App IDs and are signed.").font(.caption).foregroundStyle(Color.primary.opacity(0.7))
                 }
                 Spacer()
                 Button("Remove All") { model.removedExtensions = Set(model.ipa?.extensions.map(\.path) ?? []) }
@@ -386,7 +354,7 @@ struct InstallView: View {
                     )) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.name)
-                            Text(item.extensionPoint ?? item.bundleId).font(.caption.monospaced()).foregroundStyle(.secondary)
+                            Text(item.extensionPoint ?? item.bundleId).font(.caption.monospaced()).foregroundStyle(Color.primary.opacity(0.7))
                         }
                     }
                 }
@@ -410,7 +378,7 @@ struct InstallView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Info.plist overrides").fontWeight(.semibold)
-                    Text("Typed, top-level values; identity-critical keys are protected.").font(.caption).foregroundStyle(.secondary)
+                    Text("Typed, top-level values; identity-critical keys are protected.").font(.caption).foregroundStyle(Color.primary.opacity(0.7))
                 }
                 Spacer()
                 Button { model.addPlistOverride() } label: { Label("Add Key", systemImage: "plus") }
@@ -434,26 +402,28 @@ struct InstallView: View {
     }
 
     private var readinessCard: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 10) {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
                 ForEach(model.installReadiness) { issue in
-                    HStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .top, spacing: 8) {
                         Image(systemName: issue.symbol)
-                            .slipDimensionalSymbol(strength: 0.82)
                             .foregroundStyle(color(for: issue.level))
-                            .frame(width: 22)
+                            .frame(width: 18)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(issue.title).fontWeight(.semibold)
-                            Text(issue.detail).font(.caption).foregroundStyle(.secondary)
+                            Text(issue.title).font(.caption.weight(.medium))
+                            Text(issue.detail).font(.caption).foregroundStyle(Color.primary.opacity(0.7))
                         }
                         Spacer()
                     }
-                    .padding(.vertical, 3)
                 }
             }
+            .padding(.top, 8)
         } label: {
-            Label("Preflight", systemImage: model.blockingInstallIssue == nil ? "checkmark.shield" : "exclamationmark.shield")
+            Label(model.blockingInstallIssue?.title ?? "Ready to sign and install", systemImage: model.blockingInstallIssue == nil ? "checkmark.shield" : "info.circle")
+                .font(.caption)
+                .foregroundStyle(model.blockingInstallIssue == nil ? Color.green : Color.primary.opacity(0.7))
         }
+        .tint(.secondary)
     }
 
     private func color(for level: SlipIssueLevel) -> Color {
@@ -465,51 +435,201 @@ struct InstallView: View {
     }
 
     private var actionDock: some View {
-        VStack(spacing: 10) {
-            if model.isInstalling {
+        VStack(alignment: .leading, spacing: 12) {
+            if !model.isInstalling {
+                HStack(spacing: 8) {
+                    Image(systemName: model.ipa == nil ? "shippingbox" : "app.badge.checkmark")
+                        .foregroundStyle(Chrome.secondaryText)
+                    Text(model.ipa.map { "\($0.appName) is ready to personalize and sign." } ?? "Choose an IPA, then sign and install it on your iPhone.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Chrome.secondaryText)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let device = model.selectedDevice {
+                        DeviceConnectionGlyph(device: device, height: 18)
+                        Text(device.connectionType.caseInsensitiveCompare("Network") == .orderedSame ? "Wi-Fi" : device.connectionType).font(.caption).foregroundStyle(Chrome.secondaryText)
+                    }
+                }
+            }
+            if let error = model.errorMessage {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                    Text(error)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                    Spacer()
+                    Button {
+                        model.errorMessage = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Color.primary.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Dismiss error")
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Color.red.opacity(0.25), lineWidth: 1)
+                )
+            }
+
+            if model.isDownloading {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(model.isInspecting ? "Checking downloaded IPA…" : "Downloading IPA")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        if let fraction = model.downloadProgress?.fraction, !model.isInspecting {
+                            Text(fraction, format: .percent.precision(.fractionLength(0)))
+                                .font(.caption.monospacedDigit()).foregroundStyle(Chrome.secondaryText)
+                        }
+                        Button("Cancel") { model.cancelDownload() }
+                            .buttonStyle(WorkspaceActionButtonStyle())
+                    }
+                    if let fraction = model.downloadProgress?.fraction, !model.isInspecting {
+                        ProgressView(value: fraction)
+                            .animation(motion ? .linear(duration: 0.15) : nil, value: fraction)
+                    } else { ProgressView().progressViewStyle(.linear) }
+                    if let detail = model.downloadProgress?.detail {
+                        Text(detail).font(.caption.monospacedDigit()).foregroundStyle(Chrome.secondaryText).lineLimit(1)
+                    }
+                }
+                .accessibilityElement(children: .contain)
+            } else if model.isInstalling {
+                if model.showTwoFactor {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.shield.fill")
+                            .foregroundStyle(Color.accentColor)
+                        Text("Apple 2FA:")
+                            .font(.subheadline.bold())
+                        TextField("000000", text: $model.verificationCode)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.headline.monospacedDigit())
+                            .frame(width: 120)
+                            .onSubmit {
+                                let clean = model.verificationCode.filter { $0.isASCII && $0.isNumber }
+                                if clean.count == 6 {
+                                    model.submitTwoFactor(clean)
+                                }
+                            }
+                        Button("Submit Code") {
+                            let clean = model.verificationCode.filter { $0.isASCII && $0.isNumber }
+                            model.submitTwoFactor(clean)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(model.verificationCode.filter { $0.isASCII && $0.isNumber }.count != 6)
+
+                        Button("Resend") {
+                            model.resendTwoFactor()
+                        }
+                        .controlSize(.small)
+
+                        Button("Cancel", role: .cancel) {
+                            model.submitTwoFactor(nil)
+                        }
+                        .controlSize(.small)
+                    }
+                } else {
+                    HStack(spacing: 12) {
+                        ProgressView().controlSize(.small)
+                        Text(model.currentStage).fontWeight(.semibold)
+                        ProgressView(value: model.overallProgress).frame(maxWidth: .infinity)
+                        Text(model.overallProgress, format: .percent.precision(.fractionLength(0)))
+                            .font(.caption.monospacedDigit()).foregroundStyle(Color.primary.opacity(0.7)).contentTransition(.numericText())
+                        Button("Cancel", role: .destructive) { model.cancelInstall() }
+                    }
+                }
+            } else if model.isRunningInstallQueue || model.isImportingLibrary || model.isRestoringWorkspace {
                 HStack(spacing: 12) {
                     ProgressView().controlSize(.small)
-                    Text(model.currentStage).fontWeight(.semibold)
-                    ProgressView(value: model.overallProgress).frame(maxWidth: .infinity)
-                    Text(model.overallProgress, format: .percent.precision(.fractionLength(0)))
-                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary).contentTransition(.numericText())
-                    Button("Cancel", role: .destructive) { model.cancelInstall() }
+                    Text(model.isRunningInstallQueue ? "Preparing next app…" : model.isImportingLibrary ? "Adding apps to your library…" : "Restoring workspace…")
+                    Spacer()
+                    if model.isRunningInstallQueue { Button("Stop Queue") { model.stopInstallQueue() } }
                 }
             } else {
-                HStack(spacing: 14) {
+                HStack(spacing: 10) {
                     if model.accounts.isEmpty {
                         Button { NotificationCenter.default.post(name: .showAccounts, object: nil) } label: {
                             Label("Add Apple Account", systemImage: "person.badge.plus")
+                                .foregroundStyle(.primary)
                         }
                     } else {
                         Picker("Apple Account", selection: $model.selectedAccount) {
                             ForEach(model.accounts, id: \.self) { Text($0).tag($0) }
                         }
                         .labelsHidden()
-                        .frame(maxWidth: 250)
+                        .frame(maxWidth: 220)
                         .onChange(of: model.selectedAccount) { _, value in model.chooseAccount(value) }
                     }
 
-                    Toggle("Auto Refresh", isOn: $model.keepAutomaticallyRefreshed)
+                    Toggle("Keep refreshed", isOn: $model.keepAutomaticallyRefreshed)
                         .toggleStyle(.switch)
                         .help("Refresh about 24 hours before the free seven-day profile expires")
                     Spacer()
+                    Button { model.saveWorkspaceToQueue() } label: {
+                        Label(model.reviewingQueueID == nil ? "Queue" : "Save to Queue", systemImage: "text.badge.plus")
+                    }
+                    .help(model.reviewingQueueID == nil ? "Add reviewed app to installation queue" : "Save reviewed choices to queue")
+                    .accessibilityLabel(model.reviewingQueueID == nil ? "Add to Queue" : "Save to Queue")
+                    .disabled(!model.canInstall)
+                    if let refreshingName = model.currentlyRefreshingAppName {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Refreshing \(refreshingName)…")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(Color.primary.opacity(0.7))
+                        }
+                    }
                     Button { exportIPA() } label: { Label("Export", systemImage: "square.and.arrow.up") }
                         .disabled(!model.canExport || model.isExporting)
-                    Button { model.install() } label: { Label("Sign & Install", systemImage: "arrow.down.app.fill") }
+                    Button { appearance.selectionFeedback(); model.install() } label: {
+                        Label(
+                            model.currentlyRefreshingAppName != nil ? "App Refreshing…" : "Sign & Install",
+                            systemImage: model.currentlyRefreshingAppName != nil ? "arrow.triangle.2.circlepath" : "arrow.down.app.fill"
+                        )
+                    }
                         .slipProminentButton()
-                        .controlSize(.large)
+                        .controlSize(.regular)
                         .disabled(!model.canInstall)
                         .help(model.blockingInstallIssue.map { "\($0.title): \($0.detail)" } ?? "Sign and install on the selected iPhone")
                 }
             }
+            if let notice = model.authenticationNotice {
+                Label(notice, systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(Color.accentColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
         }
-        .padding(.horizontal, 18)
+        .controlSize(.small)
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .slipGlassSurface(tint: Color.accentColor.opacity(0.08), interactive: true, cornerRadius: 24)
-        .padding(.horizontal, 18)
-        .padding(.bottom, 12)
+        .frame(maxWidth: 860)
+        .slipGlassSurface(cornerRadius: 22)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 18)
+        .frame(maxWidth: .infinity)
         .animation(motion ? .snappy(duration: 0.25) : nil, value: model.isInstalling)
+    }
+
+    private func chooseIPAs() {
+        guard !model.workspaceIsBusy else { return }
+        Task {
+            let urls = await WorkspaceFilePicker.ipas()
+            if !urls.isEmpty { await model.importIPAs(urls) }
+        }
+    }
+
+    private func chooseIcon() {
+        guard !model.workspaceIsBusy else { return }
+        Task { if let url = await WorkspaceFilePicker.image() { model.customIconURL = url } }
     }
 
     private func exportIPA() {

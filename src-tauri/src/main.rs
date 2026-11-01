@@ -12,8 +12,8 @@ fn main() {
         }
     }
 
-    // To be quite honest, I have no idea how ring has made its way into the dependency tree in some cases.
-    rustls::crypto::aws_lc_rs::default_provider()
+    // The project uses 'ring' as the rustls crypto provider (see Cargo.toml).
+    rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
     isideload::init().expect("Failed to initialize error reporting");

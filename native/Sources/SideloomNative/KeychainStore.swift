@@ -33,29 +33,55 @@ enum KeychainStore {
     }
 
     static func password(for account: String) throws -> String {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let password = String(data: data, encoding: .utf8) else {
-            throw SideloomError.message("The saved password is unavailable. Remove and add this account again.")
+        let trimmed = account.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidates = [trimmed, trimmed.lowercased(), account]
+        for candidate in candidates {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: candidate,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne
+            ]
+            var result: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &result)
+            if status == errSecSuccess,
+               let data = result as? Data,
+               let password = String(data: data, encoding: .utf8) {
+                return password
+            }
         }
-        return password
+
+        // Case-insensitive fallback among stored accounts
+        for existing in accounts() {
+            if existing.caseInsensitiveCompare(trimmed) == .orderedSame {
+                let query: [String: Any] = [
+                    kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: service,
+                    kSecAttrAccount as String: existing,
+                    kSecReturnData as String: true,
+                    kSecMatchLimit as String: kSecMatchLimitOne
+                ]
+                var result: CFTypeRef?
+                let status = SecItemCopyMatching(query as CFDictionary, &result)
+                if status == errSecSuccess,
+                   let data = result as? Data,
+                   let password = String(data: data, encoding: .utf8) {
+                    return password
+                }
+            }
+        }
+
+        throw SideloomError.message("The saved password is unavailable. Remove and add this account again.")
     }
 
     static func save(account: String, password: String) throws {
+        let normalized = account.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let data = Data(password.utf8)
         let identity: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: normalized
         ]
         let updateStatus = SecItemUpdate(
             identity as CFDictionary,
@@ -78,15 +104,57 @@ enum KeychainStore {
     }
 
     static func delete(account: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
-        let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw osStatusError(status, action: "delete")
+        let trimmed = account.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.lowercased()
+        var targetsToDelete = Set<String>([account, trimmed, normalized])
+
+        // Find any existing accounts that match case-insensitively
+        for existing in accounts() {
+            if existing.caseInsensitiveCompare(trimmed) == .orderedSame {
+                targetsToDelete.insert(existing)
+            }
         }
+
+        var lastError: SideloomError?
+        for target in targetsToDelete {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: target
+            ]
+            let status = SecItemDelete(query as CFDictionary)
+            if status != errSecSuccess && status != errSecItemNotFound {
+                lastError = osStatusError(status, action: "delete")
+            }
+        }
+        if let lastError {
+            throw lastError
+        }
+    }
+
+    /// Invalidate the core's session without reading its authentication token.
+    static func deleteDeveloperSession(storageURL: URL) throws {
+        let metadataURL = storageURL.appendingPathComponent("dev_session.json")
+        var deletionError: SideloomError?
+        if let data = try? Data(contentsOf: metadataURL),
+           let metadata = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let reference = metadata["keychainReference"] as? String,
+           !reference.isEmpty {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: "com.slip.authentication.developer-session",
+                kSecAttrAccount as String: reference
+            ]
+            let status = SecItemDelete(query as CFDictionary)
+            if status != errSecSuccess && status != errSecItemNotFound {
+                deletionError = osStatusError(status, action: "remove the developer session")
+            }
+        }
+        // Deleting metadata invalidates the session even when Keychain is locked.
+        if FileManager.default.fileExists(atPath: metadataURL.path) {
+            try FileManager.default.removeItem(at: metadataURL)
+        }
+        if let deletionError { throw deletionError }
     }
 
     private static func osStatusError(_ status: OSStatus, action: String) -> SideloomError {

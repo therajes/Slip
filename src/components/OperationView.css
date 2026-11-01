@@ -161,3 +161,18 @@
   background: linear-gradient(90deg, #0a84ff, #64d2ff);
   transition: width 180ms ease;
 }
+
+/* Prominent plain-English error description — shown instead of raw logs */
+.operation-human-error {
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(255, 80, 60, 0.12);
+  border: 1px solid rgba(255, 80, 60, 0.28);
+  color: #ffd5ce;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  user-select: text;
+  -webkit-user-select: text;
+}
+

@@ -92,6 +92,10 @@ pub async fn install_ipa(handle: AppHandle, window: WebviewWindow, ipa_path: Str
                 removed_extensions,
                 custom_icon_path: None,
                 increased_memory_limit: false,
+                minimum_os_version: None,
+                remove_supported_devices: false,
+                enable_file_sharing: false,
+                plist_overrides: vec![],
             },
         )
         .await

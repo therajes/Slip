@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+
 import "./AppleID.css";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -68,44 +69,34 @@ export const AppleID = ({
     setSelectedSerials(certs?.map((c) => c.serialNumber) ?? []);
   }, [certs]);
 
-  const listenerAdded = useRef<boolean>(false);
-  const unlisten = useRef<() => void>(() => {});
-
+  // Listen for the 2FA-required event from the backend. This must be a
+  // standard useEffect cleanup so that navigating away and back re-registers
+  // the listener. The old listenerAdded-ref guard prevented that.
   useEffect(() => {
-    if (!listenerAdded.current) {
-      (async () => {
-        const unlistenFn = await listen("2fa-required", () => {
-          setTfaOpen(true);
-        });
-        unlisten.current = unlistenFn;
-      })();
-      listenerAdded.current = true;
-    }
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      unlisten = await listen("2fa-required", () => {
+        setTfaOpen(true);
+      });
+    })();
     return () => {
-      unlisten.current();
+      unlisten?.();
     };
   }, []);
 
-  const certListenerAdded = useRef<boolean>(false);
-  const certUnlisten = useRef<() => void>(() => {});
-
+  // Listen for max-certs-reached — same correct pattern.
   useEffect(() => {
-    if (!certListenerAdded.current) {
-      (async () => {
-        const unlistenFn = await listen<Certificate[]>(
-          "max-certs-reached",
-          (certs) => {
-            setCerts(certs.payload);
-          },
-        );
-        certUnlisten.current = unlistenFn;
-      })();
-      certListenerAdded.current = true;
-    }
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      unlisten = await listen<Certificate[]>("max-certs-reached", (event) => {
+        setCerts(event.payload);
+      });
+    })();
     return () => {
-      certUnlisten.current();
+      unlisten?.();
     };
   }, []);
+
 
   return (
     <>

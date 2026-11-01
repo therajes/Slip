@@ -79,7 +79,7 @@ struct CertificateInfo: Codable, Hashable, Identifiable {
     let serialNumber: String?
     let machineName: String?
 
-    var id: String { serialNumber ?? UUID().uuidString }
+    var id: String { serialNumber ?? [name, machineName].compactMap { $0 }.joined(separator: "-") }
 }
 
 struct InstalledAppInfo: Codable, Hashable, Identifiable {
@@ -93,19 +93,43 @@ struct InstalledAppInfo: Codable, Hashable, Identifiable {
     var id: String { bundleId }
 }
 
+struct HostIdentityInfo: Codable {
+    let computerName: String
+    let modelIdentifier: String
+    let osVersion: String
+    let osBuild: String
+    // Describes local Mac authentication; remote services supply their own metadata.
+    let authenticationDescription: String
+    let localAuthenticationAvailable: Bool?
+    let localAuthenticationMessage: String?
+}
+
 struct CoreEvent: Codable {
     let type: String
     let devices: [DeviceInfo]?
     let errors: [String]?
     let ipa: IpaInfo?
     let stage: String?
+    let provider: String?
+    let code: String?
+    let retryable: Bool?
+    let failedStage: String?
     let value: Double?
     let message: String?
     let certificates: [CertificateInfo]?
+    let revokedCount: Int?
+    let revokedSerialNumbers: [String]?
+    let failedSerialNumbers: [String]?
+    let used: Int?
+    let remaining: Int?
+    let limit: Int?
+    let appIds: [AppleAppID]?
     let apps: [InstalledAppInfo]?
     let bundleIds: [String]?
     let email: String?
     let accountName: String?
+    let details: TwoFactorDetails?
+    let hostIdentity: HostIdentityInfo?
 }
 
 struct UninstallAppsRequest: Codable {
@@ -196,7 +220,17 @@ struct InstallRequest: Codable {
     let storagePath: String
     let device: DeviceInfo
     let options: IpaInstallOptions
+    var authenticationMode = "remote"
 }
+
+struct LoginAccountRequest: Codable {
+    let email: String
+    let password: String
+    let anisetteServer: String
+    let storagePath: String
+    var authenticationMode = "remote"
+}
+
 
 enum SideloomError: LocalizedError {
     case message(String)
@@ -205,5 +239,65 @@ enum SideloomError: LocalizedError {
         switch self {
         case .message(let message): message
         }
+    }
+}
+
+struct AppleAppID: Codable, Hashable, Identifiable {
+    let id: String
+    let name: String
+    let bundleId: String
+}
+
+struct AccountResourcesRequest: Encodable {
+    let email: String
+    let password: String
+    let anisetteServer: String
+    let storagePath: String
+    var serialNumber: String? = nil
+    var serialNumbers: [String]? = nil
+    var expectedSerialNumbers: [String]? = nil
+    var appIdId: String? = nil
+    var authenticationMode = "remote"
+}
+
+struct TwoFactorDetails: Codable {
+    let unknown: Bool?
+    let sms: Bool?
+    let numbers: [TrustedPhoneNumber]?
+    let selectedNumberId: UInt32?
+    let lastError: String?
+}
+
+struct TrustedPhoneNumber: Codable, Identifiable {
+    let id: UInt32
+    let numberWithDialCode: String?
+    let lastTwoDigits: String?
+    let pushMode: String?
+
+    var displayNumber: String { numberWithDialCode ?? "Ending in \(lastTwoDigits ?? "••")" }
+}
+
+
+extension InstallRequest {
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        email = try values.decode(String.self, forKey: .email)
+        password = try values.decode(String.self, forKey: .password)
+        anisetteServer = try values.decode(String.self, forKey: .anisetteServer)
+        storagePath = try values.decode(String.self, forKey: .storagePath)
+        device = try values.decode(DeviceInfo.self, forKey: .device)
+        options = try values.decode(IpaInstallOptions.self, forKey: .options)
+        authenticationMode = try values.decodeIfPresent(String.self, forKey: .authenticationMode) ?? "remote"
+    }
+}
+
+extension LoginAccountRequest {
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        email = try values.decode(String.self, forKey: .email)
+        password = try values.decode(String.self, forKey: .password)
+        anisetteServer = try values.decode(String.self, forKey: .anisetteServer)
+        storagePath = try values.decode(String.self, forKey: .storagePath)
+        authenticationMode = try values.decodeIfPresent(String.self, forKey: .authenticationMode) ?? "remote"
     }
 }

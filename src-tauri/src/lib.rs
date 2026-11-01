@@ -14,6 +14,9 @@ mod pairing;
 #[cfg(feature = "tauri-ui")]
 #[macro_use]
 mod secure_storage;
+mod authentication;
+mod certificate_management;
+mod session_store;
 mod error;
 mod fast_install;
 pub mod headless;

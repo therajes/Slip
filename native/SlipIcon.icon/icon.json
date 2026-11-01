@@ -1,0 +1,54 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:0.97000,0.97500,0.98500,1.00000",
+          "srgb:0.84000,0.86500,0.90000,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.15500,0.17000,0.19500,1.00000",
+          "srgb:0.05500,0.06500,0.08500,1.00000"
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "SlipSymbol.png",
+          "name": "Slip transfer symbol",
+          "position": {
+            "scale": 0.88,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          },
+          "glass-specializations": [
+            {
+              "value": true
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.25
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.15
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

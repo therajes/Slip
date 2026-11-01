@@ -28,6 +28,10 @@ keys
 
 dockerfile
 
+# Rust build targets
+target/
+**/target/
+
 # Native macOS build and release products
 native/.build
 native/build
