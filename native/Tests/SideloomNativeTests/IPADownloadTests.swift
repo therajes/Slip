@@ -40,7 +40,13 @@ final class IPADownloadTests: XCTestCase, @unchecked Sendable {
                         self.wfile.write(body[start:start+4096]);self.wfile.flush()
                         if self.path=='/slow':time.sleep(.05)
                 except (BrokenPipeError,ConnectionResetError):pass
-        server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        class LocalHTTPServer(http.server.ThreadingHTTPServer):
+            def server_bind(self):
+                self.socket.bind(self.server_address)
+                self.server_address = self.socket.getsockname()
+                self.server_name = self.server_address[0]
+                self.server_port = self.server_address[1]
+        server=LocalHTTPServer(('127.0.0.1',0),Handler)
         pathlib.Path(sys.argv[1]).write_text(str(server.server_port))
         server.serve_forever()
         """#
