@@ -1,6 +1,6 @@
 # Slip 2.5.0 — Responsiveness and device correctness
 
-This release updates the existing native app and keeps its bundle identifier, signing identity, Keychain service, version-1 library format, renewal schedule format and authentication core. The approved backdrop and icon are unchanged.
+This release updates the existing native app and keeps its bundle identifier, Keychain service, version-1 library format, renewal schedule format and authentication core. The approved backdrop and icon are unchanged. Signing identities depend on how the build is produced; see the installation notes below.
 
 ## Responsiveness
 

@@ -1,43 +1,26 @@
-<div align="center">
-  <img src="design/repository-header.svg" width="100%" alt="Slip — Your iPhone apps. A native Mac home.">
-  <p>Inspect, customize, install, and refresh IPAs in a Liquid Glass workspace.</p>
-  <p>
-    <a href="https://github.com/therajes/Slip/actions/workflows/build.yml"><img src="https://github.com/therajes/Slip/actions/workflows/build.yml/badge.svg" alt="Build Slip"></a>
-    <img src="https://img.shields.io/badge/Slip-2.5-64748b?style=flat-square" alt="Slip 2.5">
-    <img src="https://img.shields.io/badge/macOS-26%2B-24292f?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 or newer">
-    <img src="https://img.shields.io/badge/SwiftUI_%2B_Rust-native-777?style=flat-square" alt="Built with SwiftUI and Rust">
-  </p>
-  <p>
-    <a href="https://github.com/therajes/Slip/releases/latest"><strong>Download Slip</strong></a> ·
-    <a href="docs/RELEASE_NOTES_2.5.0.md">What’s new in 2.5</a> ·
-    <a href="docs/GALLERY.md">Screenshot gallery</a> ·
-    <a href="https://github.com/therajes/Slip/tree/main">Source</a>
-  </p>
-</div>
+![Slip — Your iPhone apps. A native Mac home.](design/repository-header.svg)
+
+Inspect, customize, install, and refresh IPAs in a Liquid Glass workspace.
+
+[![Build Slip](https://github.com/therajes/Slip/actions/workflows/build.yml/badge.svg)](https://github.com/therajes/Slip/actions/workflows/build.yml) ![Slip 2.5](https://img.shields.io/badge/Slip-2.5-64748b?style=flat-square) ![macOS 26 or newer](https://img.shields.io/badge/macOS-26%2B-24292f?style=flat-square&logo=apple&logoColor=white) ![Built with SwiftUI and Rust](https://img.shields.io/badge/SwiftUI_%2B_Rust-native-777?style=flat-square)
+
+[**Download Slip**](https://github.com/therajes/Slip/releases/latest) · [What's new in 2.5](docs/RELEASE_NOTES_2.5.0.md) · [Screenshot gallery](docs/GALLERY.md) · [Source](https://github.com/therajes/Slip/tree/main)
 
 [![Slip 2.5 App Library with saved IPA workspaces](design/screenshots/2.5/slip-library.png)](design/media/slip-2.5-demo.mp4)
 
-Slip brings a SwiftUI and AppKit interface together with a Rust core for IPA preparation, Apple signing, and direct iPhone transfer. Save your work in an App Library, review each install, and keep refresh recipes beside the apps they belong to.
+Slip brings a SwiftUI and AppKit interface together with a Rust core for IPA preparation, Apple signing, and direct iPhone transfer. Save your work in an App Library, review each install, and keep refresh recipes beside the apps they belong to. **[Watch the 13-second walkthrough →](design/media/slip-2.5-demo.mp4)** · Library search, floating navigation, Auto Refresh, and Settings. Recorded in the native app.
 
-**[Watch the 13-second walkthrough →](design/media/slip-2.5-demo.mp4)** · Library search, floating navigation, Auto Refresh, and Settings. Recorded in the native app.
-
-## A workspace for the whole workflow
+## How it works
 
 | Make it yours | Keep it organized | Stay connected |
 | :--- | :--- | :--- |
-| Drop an IPA or import from Finder or HTTPS. Inspect artwork, identity, versions, extensions, and App ID cost before signing. | Keep saved workspaces in the App Library. Import multiple IPAs and review a sequential installation queue. | Install over USB or a paired local network. Browse the connected iPhone’s apps and manage saved refresh recipes. |
+| Drop an IPA or import from Finder or HTTPS. Inspect artwork, identity, versions, extensions, and App ID cost before signing. | Keep saved workspaces in the App Library. Import multiple IPAs and review a sequential installation queue. | Install over USB or a paired local network. Browse the connected iPhone's apps and manage saved refresh recipes. |
 | Change the Home Screen name, bundle ID, icon, minimum iOS version, and supported plist values. Keep or remove individual extensions, or export a customized IPA. | Resume your choices, follow preparation and transfer progress, and find past actions in Activity with privacy redaction. | Refresh Guard can re-sign saved apps about 24 hours before a free profile expires, when the Mac and paired iPhone are reachable. |
 
-<table>
-  <tr>
-    <td width="50%"><img src="design/screenshots/2.5/slip-autorefresh.png" alt="Slip 2.5 Auto Refresh workspace"><br><strong>Refresh, at a glance</strong><br>Saved recipes and renewal status in one place.</td>
-    <td width="50%"><img src="design/screenshots/slip-iphoneapps-dark.png" alt="Slip iPhone app inventory"><br><strong>A view of your iPhone</strong><br>App inventory, explicit selections, and device actions.</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="design/screenshots/2.5/slip-settings.png" alt="Slip 2.5 appearance and behavior settings"><br><strong>Comfortably native</strong><br>Theme and backdrop controls, with system accessibility preferences.</td>
-    <td width="50%"><img src="design/screenshots/slip-dmg.png" alt="Slip drag-to-Applications disk image"><br><strong>Drag. Drop. Open.</strong><br>A familiar macOS installer.</td>
-  </tr>
-</table>
+| | |
+| :--- | :--- |
+| ![Slip 2.5 Auto Refresh workspace](design/screenshots/2.5/slip-autorefresh.png) **Refresh, at a glance** Saved recipes and renewal status in one place. | ![Slip iPhone app inventory](design/screenshots/slip-iphoneapps-dark.png) **A view of your iPhone** App inventory, explicit selections, and device actions. |
+| ![Slip 2.5 appearance and behavior settings](design/screenshots/2.5/slip-settings.png) **Comfortably native** Theme and backdrop controls, with system accessibility preferences. | ![Slip drag-to-Applications disk image](design/screenshots/slip-dmg.png) **Drag. Drop. Open.** A familiar macOS installer. |
 
 Library, Auto Refresh, and Settings are captured from 2.5. Device inventory and disk-image images are from earlier releases. Explore the [gallery](docs/GALLERY.md) or [feature matrix](docs/FEATURE_MATRIX.md) for more.
 
@@ -55,7 +38,7 @@ Read the [2.5 release notes](docs/RELEASE_NOTES_2.5.0.md) for implementation det
 
 ## Get started
 
-**You’ll need:** an Apple-silicon Mac running macOS 26 or newer, a personal iPhone, an Apple Account, and an IPA you are authorized to use.
+**You'll need:** an Apple-silicon Mac running macOS 26 or newer, a personal iPhone, an Apple Account, and an IPA you are authorized to use.
 
 1. [Download the latest available `Slip-*.dmg`](https://github.com/therajes/Slip/releases/latest) and drag Slip to **Applications**.
 2. Connect the iPhone over USB, trust the Mac, and enable **Developer Mode** on the iPhone.
@@ -85,8 +68,7 @@ GitHub Actions runs the tests and builds a DMG on every push to `main`. Version 
 
 Current automated builds are ad-hoc signed. Developer ID signing and Apple notarization are not configured, so macOS may require explicit approval to open a downloaded build.
 
-<details>
-<summary>Development checks</summary>
+### Development checks
 
 ```sh
 cd src-tauri
@@ -98,13 +80,11 @@ swift build -c debug
 swift test
 ```
 
-</details>
-
 ## Privacy and security
 
 Signing, customization, and device communication happen locally, apart from requests to Apple developer services and the configured anisette service. Slip has no analytics or account server. Passwords reach the bundled core through an anonymous stdin pipe, never command arguments or logs; Keychain storage requires explicit consent.
 
-Apple Account profiles support verified names, local avatars, and two-factor prompts that remain visible during developer-session setup. “This Mac” never silently switches authentication providers. Remote compatibility requires an explicitly selected HTTPS endpoint, and local authentication can be unavailable on newer macOS versions. Read [authentication reliability and current limits](docs/AUTHENTICATION_RELIABILITY.md).
+Apple Account profiles support verified names, local avatars, and two-factor prompts that remain visible during developer-session setup. "This Mac" never silently switches authentication providers. Remote compatibility requires an explicitly selected HTTPS endpoint, and local authentication can be unavailable on newer macOS versions. Read [authentication reliability and current limits](docs/AUTHENTICATION_RELIABILITY.md).
 
 Preflight checks reject encrypted IPAs, incompatible iOS targets, invalid bundle IDs, missing icons, duplicate keys, and unsafe identity overrides before signing. Only install or modify apps you are authorized to use. See [SECURITY.md](SECURITY.md) to report a sensitive issue.
 
