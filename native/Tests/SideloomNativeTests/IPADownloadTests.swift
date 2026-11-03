@@ -45,8 +45,13 @@ final class IPADownloadTests: XCTestCase, @unchecked Sendable {
         server.serve_forever()
         """#
         let child = Process()
-        child.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        child.arguments = ["python3", "-I", "-u", "-c", program, ready.path]
+        if let python3 = ProcessInfo.processInfo.environment["SLIP_PYTHON3"], !python3.isEmpty {
+            child.executableURL = URL(fileURLWithPath: python3)
+            child.arguments = ["-I", "-u", "-c", program, ready.path]
+        } else {
+            child.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            child.arguments = ["python3", "-I", "-u", "-c", program, ready.path]
+        }
         let diagnostics = root.appending(path: "server.stderr")
         _ = FileManager.default.createFile(atPath: diagnostics.path, contents: nil)
         let errorOutput = try FileHandle(forWritingTo: diagnostics)

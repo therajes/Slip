@@ -39,6 +39,10 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Export resolved Python path
+        shell: bash
+        run: echo "SLIP_PYTHON3=$(which python3)" >> "$GITHUB_ENV"
+
       - name: Validate release version
         id: metadata
         shell: bash
