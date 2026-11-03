@@ -2,6 +2,7 @@
   <img src="design/repository-header.svg" width="100%" alt="Slip — Your iPhone apps. A native Mac home.">
   <p>Inspect, customize, install, and refresh IPAs in a Liquid Glass workspace.</p>
   <p>
+    <a href="https://github.com/therajes/Slip/actions/workflows/build.yml"><img src="https://github.com/therajes/Slip/actions/workflows/build.yml/badge.svg" alt="Build Slip"></a>
     <img src="https://img.shields.io/badge/Slip-2.5-64748b?style=flat-square" alt="Slip 2.5">
     <img src="https://img.shields.io/badge/macOS-26%2B-24292f?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 or newer">
     <img src="https://img.shields.io/badge/SwiftUI_%2B_Rust-native-777?style=flat-square" alt="Built with SwiftUI and Rust">
@@ -79,6 +80,10 @@ The native release uses **Xcode 27.2 / macOS SDK 27.2**, with a **macOS 26** dep
 ```
 
 For the native architecture and development details, see [native/README.md](native/README.md).
+
+GitHub Actions runs the tests and builds a DMG on every push to `main`. Version tags publish that GitHub-built DMG and its SHA-256 checksum to Releases. See [the release workflow](docs/RELEASING.md).
+
+Current automated builds are ad-hoc signed. Developer ID signing and Apple notarization are not configured, so macOS may require explicit approval to open a downloaded build.
 
 <details>
 <summary>Development checks</summary>

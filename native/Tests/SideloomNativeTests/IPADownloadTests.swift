@@ -46,19 +46,37 @@ final class IPADownloadTests: XCTestCase, @unchecked Sendable {
         """#
         let child = Process()
         child.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        child.arguments = ["python3", "-u", "-c", program, ready.path]
-        child.standardError = FileHandle.nullDevice
-        try child.run()
+        child.arguments = ["python3", "-I", "-u", "-c", program, ready.path]
+        let diagnostics = root.appending(path: "server.stderr")
+        _ = FileManager.default.createFile(atPath: diagnostics.path, contents: nil)
+        let errorOutput = try FileHandle(forWritingTo: diagnostics)
+        child.standardOutput = FileHandle.nullDevice
+        child.standardError = errorOutput
         addTeardownBlock {
             if child.isRunning { child.terminate(); child.waitUntilExit() }
+            try? errorOutput.close()
             try? FileManager.default.removeItem(at: root)
         }
-        for _ in 0..<200 {
-            if FileManager.default.fileExists(atPath: ready.path) { break }
-            try await Task.sleep(for: .milliseconds(10))
+        try child.run()
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(30))
+        while clock.now < deadline {
+            if let value = try? String(contentsOf: ready, encoding: .utf8),
+               let port = UInt16(value.trimmingCharacters(in: .whitespacesAndNewlines)), port > 0 {
+                return (URL(string: "http://127.0.0.1:\(port)")!, root.appending(path: "Imports"))
+            }
+            if !child.isRunning {
+                let detail = (try? String(contentsOf: diagnostics, encoding: .utf8)) ?? "No stderr output."
+                throw NSError(domain: "SlipDownloadFixture", code: Int(child.terminationStatus), userInfo: [
+                    NSLocalizedDescriptionKey: "Python download fixture exited before becoming ready: \(detail)"
+                ])
+            }
+            try await Task.sleep(for: .milliseconds(25))
         }
-        let port = try String(contentsOf: ready, encoding: .utf8)
-        return (URL(string: "http://127.0.0.1:\(port)")!, root.appending(path: "Imports"))
+        let detail = (try? String(contentsOf: diagnostics, encoding: .utf8)) ?? "No stderr output."
+        throw NSError(domain: "SlipDownloadFixture", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "Python download fixture did not become ready within 30 seconds: \(detail)"
+        ])
     }
 
     func testDownloadReportsBytesAndKeepsAFileOnDisk() async throws {

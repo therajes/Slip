@@ -37,6 +37,10 @@ SwiftPM's Xcode build path tagging the executable with SDK 15 when using Xcode 2
 
 Run `./create-dmg.sh build/Slip.app dist/Slip-2.5.0.dmg` to create the visual drag-to-Applications installer.
 
+Packaging requires Python 3.10 or newer. The script installs its pinned, hash-checked Finder metadata tools into an isolated environment under `native/build/dmg-tools`. It writes the background and icon layout directly, then mounts the compressed image read-only to verify its contents, layout and app signature. Finder automation is not required.
+
+GitHub builds and publishes version-tagged DMGs through [the release workflow](../docs/RELEASING.md). Automated builds use ad-hoc signing; Developer ID signing and Apple notarization require separate credentials and are not configured.
+
 
 ## Credits and licensing
 

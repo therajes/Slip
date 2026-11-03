@@ -4,27 +4,92 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
   pull_request:
     branches:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   build-macos:
     runs-on: xcode-27
+    timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      dmg_name: ${{ steps.metadata.outputs.dmg_name }}
+      artifact_name: ${{ steps.metadata.outputs.artifact_name }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python test fixtures
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Validate release version
+        id: metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import plistlib
+          import re
+          import tomllib
+          from pathlib import Path
+
+          version = plistlib.loads(Path("native/Info.plist").read_bytes())["CFBundleShortVersionString"]
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise SystemExit(f"Invalid native version: {version}")
+          versions = {
+              "package.json": json.loads(Path("package.json").read_text())["version"],
+              "src-tauri/Cargo.toml": tomllib.loads(Path("src-tauri/Cargo.toml").read_text())["package"]["version"],
+              "src-tauri/Cargo.lock": next(p["version"] for p in tomllib.loads(Path("src-tauri/Cargo.lock").read_text())["package"] if p["name"] == "sideloom"),
+              "src-tauri/tauri.conf.json": json.loads(Path("src-tauri/tauri.conf.json").read_text())["version"],
+          }
+          for path, value in versions.items():
+              if value != version:
+                  raise SystemExit(f"{path}: {value} does not match native version {version}")
+          ref = os.environ["GITHUB_REF"]
+          if ref.startswith("refs/tags/") and ref != f"refs/tags/v{version}":
+              raise SystemExit(f"Tag {ref} does not match version v{version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version}\ndmg_name=Slip-{version}.dmg\nartifact_name=Slip-{version}-macOS\n")
+          print(f"All release manifests match Slip {version}")
+          PY
 
       - name: Install Rust toolchain
+        id: rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
 
+      - name: Cache Rust dependencies and build outputs
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'src-tauri/vendor/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-rust-${{ steps.rust.outputs.cachekey }}-
+
       - name: Run Core Tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --lib
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --lib
 
       - name: Run Native Tests
         run: swift test --package-path native
@@ -32,11 +97,72 @@ jobs:
       - name: Build native Swift application
         run: chmod +x native/build.sh && ./native/build.sh
 
-      - name: Build DMG
-        run: chmod +x native/create-dmg.sh && ./native/create-dmg.sh native/build/Slip.app native/dist/Slip-2.5.0.dmg
+      - name: Build DMG and checksum
+        env:
+          DMG_NAME: ${{ steps.metadata.outputs.dmg_name }}
+        run: |
+          chmod +x native/create-dmg.sh
+          ./native/create-dmg.sh native/build/Slip.app "native/dist/$DMG_NAME"
+          cd native/dist
+          shasum -a 256 "$DMG_NAME" > SHA256SUMS.txt
+          shasum -a 256 --check SHA256SUMS.txt
+          printf '### Slip DMG\n\nBuilt on GitHub from `%s`. The app is ad-hoc signed; Developer ID signing and Apple notarization are not configured.\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: Slip-2.5.0-macOS
-          path: native/dist/Slip-2.5.0.dmg
+          name: ${{ steps.metadata.outputs.artifact_name }}
+          path: |
+            native/dist/${{ steps.metadata.outputs.dmg_name }}
+            native/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build-macos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.build-macos.outputs.version }}
+      DMG_NAME: ${{ needs.build-macos.outputs.dmg_name }}
+    steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download this run's DMG
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-macos.outputs.artifact_name }}
+          path: release-assets
+
+      - name: Verify downloaded DMG
+        working-directory: release-assets
+        run: |
+          test -s "$DMG_NAME"
+          test -s SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+
+      - name: Publish GitHub-built release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          notes_file="docs/RELEASE_NOTES_${VERSION}.md"
+          if [[ -f "$notes_file" ]]; then
+            notes=(--notes-file "$notes_file")
+          else
+            notes=(--generate-notes)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            "release-assets/$DMG_NAME" \
+            release-assets/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --target "$GITHUB_SHA" \
+            --title "Slip $VERSION" \
+            "${notes[@]}"

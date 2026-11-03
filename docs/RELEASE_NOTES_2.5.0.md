@@ -21,7 +21,9 @@ This release updates the existing native app and keeps its bundle identifier, si
 
 ## Data preservation and installation
 
-The update is applied to the existing `/Applications/Slip.app` directory. Only the native executable, version metadata and code-signature resource seal are updated. No uninstall or library migration is performed. The signing certificate and designated requirement match the prior app, retaining its Keychain identity.
+The GitHub release DMG is built and tested by GitHub Actions from the version tag, with a `SHA256SUMS.txt` download for verification. This automated build is ad-hoc signed; it is not Developer ID signed or Apple-notarized. macOS may require explicit approval to open it. Its signing identity differs from the locally installed development build described below, so existing Keychain access may require approval again.
+
+The local update was applied to the existing `/Applications/Slip.app` directory. Only the native executable, version metadata and code-signature resource seal were updated. No uninstall or library migration was performed. The local signing certificate and designated requirement match the prior local app, retaining its Keychain identity. These preservation checks describe that local update, not a guarantee about replacing the app with an ad-hoc CI build.
 
 Private backups are kept locally under `native/build/update-2.5/private-backup`, protected by an owner-only parent directory. Checks compare the library, renewal schedule and existing Core session/account files before and after the update. Keychain passwords are neither exported nor rewritten by the update procedure. Existing source IPAs are not moved, copied or deleted.
 
