@@ -232,19 +232,8 @@ struct InstallView: View {
 
     @ViewBuilder
     private func ipaIconPreview(for ipa: IpaInfo) -> some View {
-        if let url = model.ipaIconURL, let image = NSImage(contentsOf: url) {
-            Image(nsImage: image)
-                .resizable()
-                .interpolation(.high)
-                .scaledToFill()
-                .frame(width: 52, height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.primary.opacity(0.12), lineWidth: 0.8)
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                .accessibilityLabel("\(ipa.appName) app icon")
+        if let url = model.ipaIconURL {
+            CachedIPAIcon(url: url, name: ipa.appName)
         } else {
             SlipSymbolTile(
                 symbol: model.isInspecting ? "sparkle.magnifyingglass" : (ipa.encryptionStatus == "Encrypted" ? "lock.fill" : "app.dashed"),
@@ -479,27 +468,7 @@ struct InstallView: View {
             }
 
             if model.isDownloading {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(model.isInspecting ? "Checking downloaded IPA…" : "Downloading IPA")
-                            .font(.system(size: 13, weight: .medium))
-                        Spacer()
-                        if let fraction = model.downloadProgress?.fraction, !model.isInspecting {
-                            Text(fraction, format: .percent.precision(.fractionLength(0)))
-                                .font(.caption.monospacedDigit()).foregroundStyle(Chrome.secondaryText)
-                        }
-                        Button("Cancel") { model.cancelDownload() }
-                            .buttonStyle(WorkspaceActionButtonStyle())
-                    }
-                    if let fraction = model.downloadProgress?.fraction, !model.isInspecting {
-                        ProgressView(value: fraction)
-                            .animation(motion ? .linear(duration: 0.15) : nil, value: fraction)
-                    } else { ProgressView().progressViewStyle(.linear) }
-                    if let detail = model.downloadProgress?.detail {
-                        Text(detail).font(.caption.monospacedDigit()).foregroundStyle(Chrome.secondaryText).lineLimit(1)
-                    }
-                }
-                .accessibilityElement(children: .contain)
+                DownloadProgressContent(progress: model.operationProgress, inspecting: model.isInspecting, motion: motion) { model.cancelDownload() }
             } else if model.isInstalling {
                 if model.showTwoFactor {
                     HStack(spacing: 12) {
@@ -536,14 +505,7 @@ struct InstallView: View {
                         .controlSize(.small)
                     }
                 } else {
-                    HStack(spacing: 12) {
-                        ProgressView().controlSize(.small)
-                        Text(model.currentStage).fontWeight(.semibold)
-                        ProgressView(value: model.overallProgress).frame(maxWidth: .infinity)
-                        Text(model.overallProgress, format: .percent.precision(.fractionLength(0)))
-                            .font(.caption.monospacedDigit()).foregroundStyle(Color.primary.opacity(0.7)).contentTransition(.numericText())
-                        Button("Cancel", role: .destructive) { model.cancelInstall() }
-                    }
+                    InstallProgressContent(progress: model.operationProgress) { model.cancelInstall() }
                 }
             } else if model.isRunningInstallQueue || model.isImportingLibrary || model.isRestoringWorkspace {
                 HStack(spacing: 12) {
@@ -641,5 +603,73 @@ struct InstallView: View {
         panel.title = "Export Prepared IPA"
         panel.prompt = "Export"
         if panel.runModal() == .OK, let url = panel.url { model.exportModifiedIPA(to: url) }
+    }
+}
+
+private struct CachedIPAIcon: View {
+    let url: URL
+    let name: String
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image { Image(nsImage: image).resizable().interpolation(.high).scaledToFill() }
+            else { Image(systemName: "app.dashed").font(.title).frame(maxWidth: .infinity, maxHeight: .infinity) }
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.primary.opacity(0.12), lineWidth: 0.8) }
+        .accessibilityLabel("\(name) app icon")
+        .task(id: url) {
+            image = nil
+            let decoded = await ThumbnailCache.shared.image(file: url)
+            if !Task.isCancelled { image = decoded }
+        }
+    }
+}
+
+private struct DownloadProgressContent: View {
+    @ObservedObject var progress: OperationProgress
+    let inspecting: Bool
+    let motion: Bool
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(inspecting ? "Checking downloaded IPA…" : "Downloading IPA")
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+                if let fraction = progress.download?.fraction, !inspecting {
+                    Text(fraction, format: .percent.precision(.fractionLength(0)))
+                        .font(.caption.monospacedDigit()).foregroundStyle(Chrome.secondaryText)
+                }
+                Button("Cancel", action: cancel).buttonStyle(WorkspaceActionButtonStyle())
+            }
+            if let fraction = progress.download?.fraction, !inspecting {
+                ProgressView(value: fraction)
+                    .animation(motion ? .linear(duration: 0.15) : nil, value: fraction)
+            } else { ProgressView().progressViewStyle(.linear) }
+            if let detail = progress.download?.detail {
+                Text(detail).font(.caption.monospacedDigit()).foregroundStyle(Chrome.secondaryText).lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct InstallProgressContent: View {
+    @ObservedObject var progress: OperationProgress
+    let cancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ProgressView().controlSize(.small)
+            Text(progress.stage).fontWeight(.semibold)
+            ProgressView(value: progress.fraction).frame(maxWidth: .infinity)
+            Text(progress.fraction, format: .percent.precision(.fractionLength(0)))
+                .font(.caption.monospacedDigit()).foregroundStyle(Chrome.secondaryText).contentTransition(.numericText())
+            Button("Cancel", role: .destructive, action: cancel)
+        }
     }
 }

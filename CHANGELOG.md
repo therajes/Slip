@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.5.0 - 2026-11-03
+
+### Changed
+
+- Workspace edits now use targeted, debounced autosaving with serialized atomic writes, unchanged-snapshot detection, and revision ordering. Switching workspaces and quitting preserve the latest edits; a save failure keeps the app open with an explanation.
+- Installation and download progress update independently of the workspace. Lazy library and queue rows, background file checks, and bounded artwork caches reduce repeated work during navigation.
+- USB notifications, app activation, and Mac wake trigger debounced device discovery. Paired network discovery runs while the app is active and pauses in the background or during workspace operations.
+
+### Fixed
+
+- Inventory results and errors are scoped to the physical iPhone and request generation, preventing stale responses from appearing after a device switch.
+- Renewal actions, managed-app badges, uninstall confirmations, and post-uninstall recipe cleanup match the selected iPhone as well as the bundle ID.
+- Transient discovery errors preserve the last known connection; successful empty discovery clears disconnected devices while retaining the intended target for reconnection.
+
+The library format, existing renewal times, and authentication core remain unchanged. See the [2.5.0 release notes](docs/RELEASE_NOTES_2.5.0.md) for details and validation limits.
+
 ## 2.4.0 - 2026-11-01
 
 ### Added

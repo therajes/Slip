@@ -12,6 +12,7 @@ struct DeviceAppsView: View {
     @State private var search = ""
     @State private var selectedBundleIDs: Set<String> = []
     @State private var pendingUninstall: Set<String> = []
+    @State private var pendingUninstallDeviceUDID: String?
     @State private var showUninstallConfirmation = false
 
     private var filteredApps: [InstalledAppInfo] {
@@ -26,9 +27,7 @@ struct DeviceAppsView: View {
     private var filteredBundleIDs: Set<String> { Set(filteredApps.map(\.bundleId)) }
 
     private var selectedRecipeIDs: Set<String> {
-        Set(model.managedInstallations.compactMap { installation in
-            selectedBundleIDs.contains(installation.bundleId) ? installation.id : nil
-        })
+        model.managedRecipeIDs(for: selectedBundleIDs, deviceUDID: model.selectedDevice?.udid)
     }
 
     private var uninstallNames: String {
@@ -58,9 +57,11 @@ struct DeviceAppsView: View {
         .frame(maxWidth: .infinity)
         .buttonStyle(WorkspaceActionButtonStyle())
         .animation(appearance.motionAllowed ? .smooth(duration: 0.2) : nil, value: selectedBundleIDs)
-        .onChange(of: model.selectedDevice) { _, _ in
+        .onChange(of: model.selectedDevice?.udid) { _, _ in
             selectedBundleIDs.removeAll()
-            model.installedApps = []
+            pendingUninstall.removeAll()
+            pendingUninstallDeviceUDID = nil
+            showUninstallConfirmation = false
         }
         .onChange(of: model.installedApps) { _, apps in
             selectedBundleIDs.formIntersection(Set(apps.map(\.bundleId)))
@@ -69,9 +70,11 @@ struct DeviceAppsView: View {
             Button("Cancel", role: .cancel) { pendingUninstall.removeAll() }
             Button("Uninstall", role: .destructive) {
                 let requested = pendingUninstall
+                let deviceUDID = pendingUninstallDeviceUDID
                 pendingUninstall.removeAll()
                 Task {
-                    let removed = await model.uninstallApps(bundleIDs: requested)
+                    guard let deviceUDID else { return }
+                    let removed = await model.uninstallApps(bundleIDs: requested, expectedDeviceUDID: deviceUDID)
                     selectedBundleIDs.subtract(removed)
                 }
             }
@@ -90,6 +93,7 @@ struct DeviceAppsView: View {
                 }
             }
             .frame(maxWidth: 245)
+            .disabled(model.workspaceIsBusy)
             SidebarSearchField(text: $search, prompt: "Search apps or bundle IDs")
             Button {
                 Task { await model.loadInstalledApps() }
@@ -137,12 +141,13 @@ struct DeviceAppsView: View {
             .disabled(selectedRecipeIDs.isEmpty || !model.refreshingManagedIDs.isDisjoint(with: selectedRecipeIDs))
             Button(role: .destructive) {
                 pendingUninstall = selectedBundleIDs
+                pendingUninstallDeviceUDID = model.selectedDevice?.udid
                 showUninstallConfirmation = true
             } label: {
                 if model.isUninstallingApps { ProgressView().controlSize(.small) }
                 else { Label("Uninstall…", systemImage: "trash") }
             }
-            .disabled(selectedBundleIDs.isEmpty || model.isUninstallingApps)
+            .disabled(selectedBundleIDs.isEmpty || model.workspaceIsBusy || !model.inventoryMatchesSelectedDevice)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -229,7 +234,7 @@ struct DeviceAppsView: View {
     }
 
     private func managedRecipe(for app: InstalledAppInfo) -> ManagedInstallation? {
-        model.managedInstallations.first { $0.bundleId == app.bundleId }
+        model.managedInstallations.first { $0.deviceUDID == model.selectedDevice?.udid && $0.bundleId == app.bundleId }
     }
 }
 
@@ -237,11 +242,7 @@ private struct InstalledAppIcon: View {
     let app: InstalledAppInfo
     let isManaged: Bool
 
-    private var icon: NSImage? {
-        guard let encoded = app.iconData,
-              let data = Data(base64Encoded: encoded) else { return nil }
-        return NSImage(data: data)
-    }
+    @State private var icon: NSImage?
 
     private var initials: String {
         let value = (app.name.isEmpty ? app.bundleId : app.name)
@@ -273,6 +274,12 @@ private struct InstalledAppIcon: View {
         }
         .frame(width: 40, height: 40)
         .fixedSize(horizontal: true, vertical: true)
+        .task(id: app.iconData) {
+            icon = nil
+            guard let encoded = app.iconData else { return }
+            let decoded = await ThumbnailCache.shared.image(encoded: encoded)
+            if !Task.isCancelled { icon = decoded }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)

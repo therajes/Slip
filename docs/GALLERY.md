@@ -1,70 +1,44 @@
-# Slip 2.4.0 Visual Showcase
+<div align="center">
+  <img src="../design/slip-icon.png" width="96" alt="Slip app icon">
+  <h1>Slip, at a glance.</h1>
+  <p>A native Mac workspace for your IPAs and personal iPhone.</p>
+  <p><a href="../README.md">Overview</a> · <a href="RELEASE_NOTES_2.5.0.md">What’s new in 2.5</a> · <a href="../design/media/slip-2.5-demo.mp4">Watch the short demo</a></p>
+</div>
 
-Slip 2.4.0 pairs Apple's native Liquid Glass interface system with a high-performance Rust core, providing a focused macOS home for installing and managing apps on personal iPhones.
+Slip 2.5 retains the Liquid Glass interface and icon while improving autosaving, artwork loading, progress updates and device correctness. The library, Auto Refresh and Settings below are captured from the native 2.5 app. Device inventory and disk-image images are retained from earlier releases.
 
----
+## A library that remembers
 
-## Application Icon & Identity
+![Slip 2.5 App Library with saved IPA workspaces](../design/screenshots/2.5/slip-library.png)
 
-![Slip Application Icon](../design/slip-icon.png)
+Find saved apps, reopen a workspace and pick up your customization choices. IPAs stay in their original locations. Drop an IPA or import from Finder to inspect its identity, artwork, compatibility and extensions before signing.
 
-### Feature Callouts
-- **Dual Flowing App Tiles**: Refined graphite and cool platinum gradient palette with a satin finish.
-- **Transparent Cutout**: True alpha transparency through the center transfer arrow and outer boundary allows the desktop or Dock to show through.
-- **Adaptive System Styling**: Layered macOS 27 Icon Composer asset (`SlipIcon.icon`) providing Aqua, Dark Aqua, and Tintable image stacks.
+**[Watch the 13-second native-app tour](../design/media/slip-2.5-demo.mp4)** — search the library, open floating navigation, view Auto Refresh and visit Settings. This is a brief navigation demo; pauses between computer-use actions are trimmed. It does not perform sign-in, installation or renewal.
 
----
+## Keep apps ready
 
-## Liquid Glass Workspace & Installer
+![Slip 2.5 Auto Refresh workspace](../design/screenshots/2.5/slip-autorefresh.png)
 
-![Slip's native Liquid Glass installer](../design/screenshots/slip-install.png)
+Refresh Guard keeps saved renewal recipes visible with their status and schedule. Automatic renewal requires an awake Mac, the source IPA, opted-in Keychain credentials and a reachable paired iPhone. Apple’s seven-day free provisioning limit still applies.
 
-### Feature Callouts
-- **Liquid Glass Backdrop**: Native SwiftUI and AppKit material layers with a 26-point rounded mask, subtle scrim, and floating navigation capsules.
-- **Hardware-Accurate Device Preview**: Dynamic Island, notch, and screen proportions rendered from trusted hardware metadata of the connected iPhone.
-- **IPA Inspection & Customization**: Embedded artwork extraction, bundle ID and app title customization, minimum iOS version override, and extension cost calculator.
-- **Floating Action Dock**: Contextual **Sign & Install** button, preflight readiness disclosures, and fast App Library queue integration.
+## See what’s on your iPhone
 
----
+![Slip iPhone app inventory](../design/screenshots/slip-iphoneapps-dark.png)
 
-## Local Apple Account Profiles
+Browse device apps, copy bundle IDs and manage eligible saved apps. In 2.5, inventory results, selections and uninstall confirmations are scoped to the physical iPhone, so late results from another device are discarded.
 
-![Slip's local Apple Account profiles](../design/screenshots/slip-accounts.png)
+## Make the workspace yours
 
-### Feature Callouts
-- **Verified Developer Profiles**: Apple Developer authentication with verified account names, local custom avatars, and multi-account switching.
-- **Secure Keychain Storage**: Opt-in macOS Keychain storage ensuring developer credentials are never logged or exposed in command arguments.
-- **Identity & Anisette Status**: Real-time status for local "This Mac" hardware identity (AOSKit) and remote authentication fallback.
-- **Refresh Guard Integration**: Backs the automated 7-day profile renewal workflow for connected or network-paired devices.
+![Slip 2.5 appearance and workspace settings](../design/screenshots/2.5/slip-settings.png)
 
----
+Choose a theme, adjust backdrop transparency and tune motion or performance preferences. Native accessibility settings retain solid surfaces when needed.
 
-## Auto Refresh Management
+## Start with a drag
 
-![Slip Auto Refresh](../design/screenshots/slip-autorefresh-dark.png)
+![Slip disk image with drag-to-Applications installation](../design/screenshots/slip-dmg.png)
 
-### Feature Callouts
-- **Automated Profile Renewal**: Background daemon monitors 7-day Apple Personal Team provisioning expirations and automatically re-signs apps over Wi-Fi or USB.
-- **Recipe Health Indicators**: Clear status tracking for each managed app with next-refresh schedule, days remaining, and expiration timelines.
-- **Kernel File Leasing**: Safe background serialization prevents concurrency conflicts during active device installations.
+Download a release disk image and drag Slip to Applications. Connect and trust your iPhone over USB for the first setup, then follow the [installation steps](../README.md#get-started).
 
 ---
 
-## On-Device App Inventory
-
-![Slip iPhone Apps](../design/screenshots/slip-iphoneapps-dark.png)
-
-### Feature Callouts
-- **Live SpringBoard Artwork**: Displays actual on-device app icons loaded directly via Apple MobileDevice framework.
-- **Batch Selection & Management**: Select, copy bundle IDs, refresh provisioning, or cleanly uninstall apps and their Auto Refresh recipes in one click.
-
----
-
-## Drag-to-Applications Disk Image
-
-![Slip drag-to-Applications disk image](../design/screenshots/slip-dmg.png)
-
-### Feature Callouts
-- **Native Installer Canvas**: Tailored disk image window guiding installation directly into `/Applications`.
-- **Self-Contained Bundle**: Fully integrated Swift/Rust native macOS app requiring no third-party mobile drivers or external frameworks.
-- **Clean Distribution**: Hardened runtime and signed disk image for seamless macOS gatekeeper compliance.
+[Back to the project](../README.md) · [Build the native app](../native/README.md) · [Feature matrix and limits](FEATURE_MATRIX.md)

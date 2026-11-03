@@ -57,6 +57,10 @@ enum AutoRefreshStore {
         try ManagedInstallationsRepository(fileURL: fileURL).mergeOutcome(updated, original: original)
     }
 
+    static func remove(bundleIDs: Set<String>, deviceUDID: String) throws -> Int {
+        try ManagedInstallationsRepository(fileURL: fileURL).remove(bundleIDs: bundleIDs, deviceUDID: deviceUDID)
+    }
+
     static func recordSuccessfulInstall(
         ipa: IpaInfo,
         request: InstallRequest,

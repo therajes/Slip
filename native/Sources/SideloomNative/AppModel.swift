@@ -7,33 +7,43 @@ import SwiftUI
 final class AppModel: ObservableObject {
     @Published var devices: [DeviceInfo] = []
     @Published var selectedDevice: DeviceInfo? {
-        didSet { if let selectedDevice { desiredWorkspaceDeviceUDID = selectedDevice.udid } }
+        didSet { deviceSelectionDidChange(from: oldValue); scheduleWorkspacePersistence() }
     }
     var desiredWorkspaceDeviceUDID: String?
-    @Published var ipa: IpaInfo?
+    @Published var ipa: IpaInfo? { didSet { scheduleWorkspacePersistence() } }
     @Published var ipaIconURL: URL?
-    @Published var customName = ""
-    @Published var customBundleID = ""
-    @Published var customIconURL: URL?
-    @Published var removedExtensions: Set<String> = []
-    @Published var increasedMemoryLimit = false
-    @Published var minimumOSVersion = ""
-    @Published var removeSupportedDevices = false
-    @Published var enableFileSharing = false
-    @Published var plistOverrides: [PlistOverride] = []
-    @Published var keepAutomaticallyRefreshed = true
+    @Published var customName = "" { didSet { if customName != oldValue { scheduleWorkspacePersistence() } } }
+    @Published var customBundleID = "" { didSet { if customBundleID != oldValue { scheduleWorkspacePersistence() } } }
+    @Published var customIconURL: URL? { didSet { if customIconURL != oldValue { scheduleWorkspacePersistence() } } }
+    @Published var removedExtensions: Set<String> = [] { didSet { if removedExtensions != oldValue { scheduleWorkspacePersistence() } } }
+    @Published var increasedMemoryLimit = false { didSet { if increasedMemoryLimit != oldValue { scheduleWorkspacePersistence() } } }
+    @Published var minimumOSVersion = "" { didSet { if minimumOSVersion != oldValue { scheduleWorkspacePersistence() } } }
+    @Published var removeSupportedDevices = false { didSet { if removeSupportedDevices != oldValue { scheduleWorkspacePersistence() } } }
+    @Published var enableFileSharing = false { didSet { if enableFileSharing != oldValue { scheduleWorkspacePersistence() } } }
+    @Published var plistOverrides: [PlistOverride] = [] { didSet { if plistOverrides != oldValue { scheduleWorkspacePersistence() } } }
+    @Published var keepAutomaticallyRefreshed = true { didSet { if keepAutomaticallyRefreshed != oldValue { scheduleWorkspacePersistence() } } }
     @Published var accounts: [String] = []
     @Published var accountProfiles: [String: AccountProfile] = [:]
-    @Published var selectedAccount = ""
+    @Published var selectedAccount = "" { didSet { if selectedAccount != oldValue { scheduleWorkspacePersistence() } } }
     @Published var isRefreshing = false
     @Published var isInspecting = false
     @Published var isInstalling = false
     @Published var isEnablingWiFi = false
     @Published var isExporting = false
     @Published var isDownloading = false
-    @Published var downloadProgress: IPADownloadProgress?
-    @Published var currentStage = "Ready"
-    @Published var overallProgress = 0.0
+    let operationProgress = OperationProgress()
+    var downloadProgress: IPADownloadProgress? {
+        get { operationProgress.download }
+        set { operationProgress.download = newValue }
+    }
+    var currentStage: String {
+        get { operationProgress.stage }
+        set { if newValue != operationProgress.stage { operationProgress.stage = newValue } }
+    }
+    var overallProgress: Double {
+        get { operationProgress.fraction }
+        set { if newValue != operationProgress.fraction { operationProgress.fraction = newValue } }
+    }
     @Published var activity: [String] = []
     @Published var errorMessage: String?
     @Published var showTwoFactor = false
@@ -50,6 +60,8 @@ final class AppModel: ObservableObject {
     @Published var managedInstallationsError: String?
     @Published var installedApps: [InstalledAppInfo] = []
     @Published var isLoadingInstalledApps = false
+    var inventoryGeneration = UUID()
+    @Published var installedAppsDeviceUDID: String?
     @Published var isUninstallingApps = false
     @Published var inspectionDuration: TimeInterval?
     @Published var ipaPreparationNotice: String?
@@ -87,7 +99,14 @@ final class AppModel: ObservableObject {
     var activeLibraryID: UUID?
     var activeSourceStamp: IPAFileStamp?
     let libraryRepository: AppLibraryRepository?
-    var libraryPersistence: AnyCancellable?
+    var workspaceSaveTask: Task<Void, Never>?
+    var libraryWriteTask: Task<Void, Never>?
+    var libraryDiskWriter: LibraryDiskWriter?
+    var lastSubmittedLibrary: AppLibraryState?
+    var libraryRevision: UInt64 = 0
+    var pendingLibraryWrites = 0
+    var librarySaveFailed = false
+    var deviceMonitor: DeviceConnectionMonitor?
 
     var isAuthenticating: Bool { isLoggingIn || isInstalling || isManagingAccount }
     var showInlineTwoFactor: Bool { authentication.showsChallenge }
@@ -130,10 +149,11 @@ final class AppModel: ObservableObject {
         self.libraryRepository = libraryRepository ?? (loadSavedState && startupTasks ? .standard : nil)
         if loadSavedState { reloadAccounts(); reloadManagedInstallations() }
         if let repository = self.libraryRepository {
-            do { library = try repository.load(); library.recoverInterruptedQueue() }
+            do { library = try repository.load() }
             catch { libraryNotice = "Slip couldn’t read your library. The saved file has been preserved." }
-            libraryPersistence = objectWillChange.debounce(for: .milliseconds(350), scheduler: RunLoop.main)
-                .sink { [weak self] in self?.persistWorkspace() }
+            lastSubmittedLibrary = library
+            libraryDiskWriter = LibraryDiskWriter(repository: repository, initialState: library)
+            library.recoverInterruptedQueue()
         }
         if startupTasks {
             do {
@@ -141,9 +161,13 @@ final class AppModel: ObservableObject {
             } catch {
                 appendActivity("Auto Refresh scheduler: \(error.localizedDescription)")
             }
-            Task {
+            Task { [self] in
                 if ipa == nil, !isInspecting, let id = library.activeID { await openLibraryWorkspace(id) }
                 await refreshDevices()
+                deviceMonitor = DeviceConnectionMonitor { [weak self] in
+                    guard let self, !self.workspaceIsBusy else { return }
+                    await self.refreshDevices(quiet: true)
+                }
             }
         }
     }
@@ -496,30 +520,33 @@ final class AppModel: ObservableObject {
         if let message = event.message { appendActivity(message) }
     }
 
-    func refreshDevices() async {
+    func refreshDevices(quiet: Bool = false) async {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
         do {
             let event = try await core.run(["devices"])
-            devices = event.devices ?? []
+            let discovered = event.devices ?? []
+            if devices != discovered { devices = discovered }
+            let selection: DeviceInfo?
             if let current = selectedDevice,
                let replacement = devices.first(where: { $0.identity == current.identity }) {
-                selectedDevice = replacement
+                selection = replacement
             } else {
                 if let desiredWorkspaceDeviceUDID {
-                    selectedDevice = devices.first(where: { $0.udid == desiredWorkspaceDeviceUDID })
+                    selection = devices.first(where: { $0.udid == desiredWorkspaceDeviceUDID && $0.connectionType == "USB" })
+                        ?? devices.first(where: { $0.udid == desiredWorkspaceDeviceUDID })
                 } else {
-                    selectedDevice = devices.first(where: { $0.connectionType.caseInsensitiveCompare("USB") == .orderedSame }) ?? devices.first
+                    selection = devices.first(where: { $0.connectionType.caseInsensitiveCompare("USB") == .orderedSame }) ?? devices.first
                 }
             }
-            if let errors = event.errors, !errors.isEmpty {
+            if selectedDevice != selection { selectedDevice = selection }
+            if !quiet, let errors = event.errors, !errors.isEmpty {
                 appendActivity(errors.joined(separator: " • "))
             }
         } catch {
-            devices = []
-            selectedDevice = nil
-            errorMessage = error.localizedDescription
+            // A transient discovery failure is not evidence of disconnection.
+            if !quiet { errorMessage = error.localizedDescription }
         }
     }
 
@@ -564,7 +591,7 @@ final class AppModel: ObservableObject {
             inspectionDuration = Date().timeIntervalSince(started)
             currentStage = "Ready"
             appendActivity("Loaded \(info.appName) \(info.version) in \(inspectionDuration?.formatted(.number.precision(.fractionLength(2))) ?? "0")s")
-            Task { await loadIPAPreview(for: info) }
+            Task { await loadIPAPreview(for: info, generation: generation) }
             return true
         } catch {
             guard inspectionGeneration == generation, !Task.isCancelled,
@@ -667,19 +694,25 @@ final class AppModel: ObservableObject {
     }
 
     func loadInstalledApps() async {
-        guard !isLoadingInstalledApps else { return }
+        guard !isLoadingInstalledApps, !isUninstallingApps else { return }
         guard let device = selectedDevice else {
             installedApps = []
             return
         }
         isLoadingInstalledApps = true
-        defer { isLoadingInstalledApps = false }
+        let generation = UUID()
+        inventoryGeneration = generation
+        defer { if inventoryGeneration == generation { isLoadingInstalledApps = false } }
         do {
             let event = try await core.run(["apps"], input: device)
+            guard inventoryGeneration == generation, selectedDevice?.udid == device.udid else { return }
+            installedAppsDeviceUDID = device.udid
             installedApps = event.apps ?? []
             appendActivity("Loaded \(installedApps.count) user apps from \(device.name)")
         } catch {
+            guard inventoryGeneration == generation, selectedDevice?.udid == device.udid else { return }
             installedApps = []
+            installedAppsDeviceUDID = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -777,17 +810,20 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func uninstallApps(bundleIDs: Set<String>) async -> Set<String> {
-        guard !workspaceIsBusy, !isUninstallingApps, let device = selectedDevice, !bundleIDs.isEmpty else { return [] }
+    func uninstallApps(bundleIDs: Set<String>, expectedDeviceUDID: String? = nil) async -> Set<String> {
+        guard !workspaceIsBusy, !isUninstallingApps, let device = selectedDevice, !bundleIDs.isEmpty,
+              inventoryMatchesSelectedDevice, expectedDeviceUDID == nil || expectedDeviceUDID == device.udid else { return [] }
         isUninstallingApps = true
         defer { isUninstallingApps = false }
         do {
             let request = UninstallAppsRequest(device: device, bundleIds: bundleIDs.sorted())
             let event = try await core.run(["uninstall"], input: request)
             let removed = Set(event.bundleIds ?? [])
-            installedApps.removeAll { removed.contains($0.bundleId) }
+            if selectedDevice?.udid == device.udid, installedAppsDeviceUDID == device.udid {
+                installedApps.removeAll { removed.contains($0.bundleId) }
+            }
             if !removed.isEmpty {
-                removeRefreshRecipes(for: removed)
+                removeRefreshRecipes(for: removed, deviceUDID: device.udid)
             }
             appendActivity(event.message ?? "Removed \(removed.count) app\(removed.count == 1 ? "" : "s") from \(device.marketingName)")
             if let errors = event.errors, !errors.isEmpty {
@@ -1298,13 +1334,9 @@ final class AppModel: ObservableObject {
         return base.appending(path: safe, directoryHint: .isDirectory)
     }
 
-    private func removeRefreshRecipes(for bundleIDs: Set<String>) {
+    private func removeRefreshRecipes(for bundleIDs: Set<String>, deviceUDID: String) {
         do {
-            let removed = try AutoRefreshStore.update { installations in
-                let count = installations.count
-                installations.removeAll { bundleIDs.contains($0.bundleId) }
-                return count - installations.count
-            }
+            let removed = try AutoRefreshStore.remove(bundleIDs: bundleIDs, deviceUDID: deviceUDID)
             guard removed > 0 else { return }
             reloadManagedInstallations()
             appendActivity("Removed matching Auto Refresh schedules")
@@ -1313,42 +1345,31 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func loadIPAPreview(for info: IpaInfo) async {
+    private func loadIPAPreview(for info: IpaInfo, generation: UUID) async {
+        var temporary: URL?
         do {
-            let previewDirectory = try FileManager.default.url(
-                for: .cachesDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            ).appending(path: "app.sideloom.native/IPAIcons", directoryHint: .isDirectory)
-            try FileManager.default.createDirectory(
-                at: previewDirectory,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-            let destination = previewDirectory.appending(
-                path: "\(UUID().uuidString).png",
-                directoryHint: .notDirectory
-            )
-            _ = try await core.run(["icon", info.path, destination.path])
-            guard ipa?.path == info.path, FileManager.default.fileExists(atPath: destination.path) else {
-                try? FileManager.default.removeItem(at: destination)
-                return
+            let cached = try await IPAPreviewCache.shared.location(for: info)
+            if !cached.exists {
+                let output = cached.url.deletingLastPathComponent().appending(path: "temporary-\(UUID()).png")
+                temporary = output
+                _ = try await core.run(["icon", info.path, output.path])
+                guard inspectionGeneration == generation, ipa?.path == info.path else {
+                    await IPAPreviewCache.shared.discard(output)
+                    return
+                }
+                try await IPAPreviewCache.shared.store(output, at: cached.url)
             }
-            ipaIconURL = destination
+            guard inspectionGeneration == generation, ipa?.path == info.path else { return }
+            ipaIconURL = cached.url
         } catch {
-            guard ipa?.path == info.path else { return }
+            if let temporary { await IPAPreviewCache.shared.discard(temporary) }
+            guard inspectionGeneration == generation, ipa?.path == info.path else { return }
             ipaIconURL = nil
             appendActivity("The IPA did not expose a usable app icon; showing a fallback.")
         }
     }
 
-    private func discardIPAPreview() {
-        if let ipaIconURL {
-            try? FileManager.default.removeItem(at: ipaIconURL)
-        }
-        ipaIconURL = nil
-    }
+    private func discardIPAPreview() { ipaIconURL = nil }
 
     var visibleActivity: [String] {
         hideSensitiveInfo ? activity.map(redacted) : activity

@@ -3,7 +3,7 @@ import Foundation
 
 extension AppModel {
     var workspaceIsBusy: Bool {
-        isAuthenticating || isInspecting || isDownloading || isExporting || isImportingLibrary || isRestoringWorkspace || isRunningInstallQueue
+        isAuthenticating || isInspecting || isDownloading || isExporting || isImportingLibrary || isRestoringWorkspace || isRunningInstallQueue || isUninstallingApps
     }
 
     func currentWorkspace() -> SavedAppWorkspace? {
@@ -14,7 +14,9 @@ extension AppModel {
     }
 
     func persistWorkspace() {
-        guard let repository = libraryRepository, !isRestoringWorkspace else { return }
+        workspaceSaveTask?.cancel()
+        workspaceSaveTask = nil
+        guard let writer = libraryDiskWriter, !isRestoringWorkspace else { return }
         if var snapshot = currentWorkspace() {
             activeLibraryID = snapshot.id
             if let index = library.apps.firstIndex(where: { $0.id == snapshot.id }) {
@@ -26,10 +28,47 @@ extension AppModel {
             } else { library.apps.append(snapshot) }
             if library.activeID != snapshot.id { library.activeID = snapshot.id }
         }
-        do { try repository.save(library) }
-        catch {
-            let notice = "Slip couldn’t save the library. Your existing saved file has been preserved."
-            if libraryNotice != notice { libraryNotice = notice }
+        guard lastSubmittedLibrary != library else { return }
+        let snapshot = library
+        lastSubmittedLibrary = snapshot
+        libraryRevision += 1
+        let revision = libraryRevision
+        pendingLibraryWrites += 1
+        libraryWriteTask = Task { [weak self] in
+            do {
+                try await writer.save(snapshot, revision: revision)
+                if let self, self.libraryRevision == revision { self.librarySaveFailed = false }
+            } catch {
+                if let self, self.libraryRevision == revision {
+                    self.lastSubmittedLibrary = nil
+                    self.librarySaveFailed = true
+                    self.libraryNotice = "Slip couldn’t save the library. Your existing saved file has been preserved."
+                }
+            }
+            self?.pendingLibraryWrites -= 1
+        }
+    }
+
+    func scheduleWorkspacePersistence() {
+        guard libraryRepository != nil, !isRestoringWorkspace else { return }
+        workspaceSaveTask?.cancel()
+        workspaceSaveTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            self?.persistWorkspace()
+        }
+    }
+
+    @discardableResult
+    func flushLibraryPersistence() async -> Bool {
+        while true {
+            persistWorkspace()
+            while pendingLibraryWrites > 0 {
+                await libraryWriteTask?.value
+                if pendingLibraryWrites > 0 { await Task.yield() }
+            }
+            if librarySaveFailed { return false }
+            // Include edits made while the preceding disk write was in flight.
+            if workspaceSaveTask == nil { return true }
         }
     }
 

@@ -63,6 +63,7 @@ final class AppLibraryTests: XCTestCase {
         first.keepAutomaticallyRefreshed = false
         first.plistOverrides = [PlistOverride(key: "", value: "unfinished")]
         first.persistWorkspace()
+        await first.flushLibraryPersistence()
         let saved = try XCTUnwrap(first.library.apps.first)
         let restored = try model(root)
         let opened = await restored.openLibraryWorkspace(saved.id)
@@ -145,6 +146,7 @@ final class AppLibraryTests: XCTestCase {
         model.moveQueueItem(last, by: -1)
         XCTAssertEqual(model.library.queue.first?.workspace.ipa.appName, "two")
         model.library.queue[0].status = .installing; model.persistWorkspace()
+        await model.flushLibraryPersistence()
         let reopened = try self.model(root)
         XCTAssertEqual(reopened.library.queue[0].status, .review)
         XCTAssertFalse(reopened.isRunningInstallQueue)

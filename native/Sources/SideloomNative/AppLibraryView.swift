@@ -6,6 +6,7 @@ struct AppLibraryView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var appearance: AppearanceController
     @State private var search = ""
+    @State private var sourceAvailability: [String: Bool] = [:]
 
     private var pending: [InstallQueueItem] { model.library.queue.filter { $0.status != .installed } }
     private var matchingApps: [SavedAppWorkspace] {
@@ -37,15 +38,16 @@ struct AppLibraryView: View {
                                     message: "Open an IPA to save its workspace. Add several to build a queue, then review each app before installing.")
             } else {
                 GroupBox {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         TextField("Search apps", text: $search)
                             .textFieldStyle(.roundedBorder).padding(.bottom, 16)
                             .accessibilityLabel("Search library")
-                        ForEach(matchingApps) { app in
+                        let apps = matchingApps
+                        ForEach(apps) { app in
                             libraryRow(app)
-                            if app.id != matchingApps.last?.id { Divider().padding(.vertical, 14) }
+                            if app.id != apps.last?.id { Divider().padding(.vertical, 14) }
                         }
-                        if matchingApps.isEmpty { Text("No matching apps").foregroundStyle(Chrome.secondaryText).padding() }
+                        if apps.isEmpty { Text("No matching apps").foregroundStyle(Chrome.secondaryText).padding() }
                     }
                     .padding(4)
                 } label: { Label("Saved apps · \(model.library.apps.count)", systemImage: "square.stack") }
@@ -58,6 +60,19 @@ struct AppLibraryView: View {
             Task { await model.importIPAs(urls) }
             return true
         }
+        .task(id: model.library.apps.map(\.ipa.path)) { await refreshSourceAvailability() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await refreshSourceAvailability() }
+        }
+    }
+
+    private func refreshSourceAvailability() async {
+        let paths = model.library.apps.map(\.ipa.path)
+        let available = await Task.detached(priority: .utility) {
+            Dictionary(uniqueKeysWithValues: Set(paths).map { ($0, FileManager.default.fileExists(atPath: $0)) })
+        }.value
+        guard !Task.isCancelled, paths == model.library.apps.map(\.ipa.path) else { return }
+        if sourceAvailability != available { sourceAvailability = available }
     }
 
     private func addApps() {
@@ -77,7 +92,7 @@ struct AppLibraryView: View {
 
     private var queueCard: some View {
         GroupBox {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(model.isRunningInstallQueue ? "Installing one app at a time" : "Review, then install together")
@@ -137,20 +152,21 @@ struct AppLibraryView: View {
     }
 
     private func libraryRow(_ app: SavedAppWorkspace) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: app.sourceExists ? "app.badge" : "doc.badge.ellipsis")
+        let sourceExists = sourceAvailability[app.ipa.path] ?? true
+        return HStack(spacing: 14) {
+            Image(systemName: sourceExists ? "app.badge" : "doc.badge.ellipsis")
                 .font(.system(size: 24, weight: .light)).frame(width: 44, height: 44)
                 .background(Chrome.overlay(0.05), in: RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 4) {
                 Text(app.name).font(.system(size: 14, weight: .semibold))
                 Text("\(app.ipa.version) · \(app.ipa.bundleId)").font(.caption).foregroundStyle(Chrome.secondaryText)
                     .lineLimit(1).truncationMode(.middle)
-                Text(app.sourceExists ? app.ipa.fileName : "Source IPA missing")
-                    .font(.caption).foregroundStyle(app.sourceExists ? Chrome.secondaryText : Color.orange)
+                Text(sourceExists ? app.ipa.fileName : "Source IPA missing")
+                    .font(.caption).foregroundStyle(sourceExists ? Chrome.secondaryText : Color.orange)
                     .lineLimit(1).help(app.ipa.path)
             }
             Spacer(minLength: 8)
-            if app.sourceExists {
+            if sourceExists {
                 Button("Open") {
                     appearance.selectionFeedback()
                     Task { if await model.openLibraryWorkspace(app.id) { NotificationCenter.default.post(name: .showInstall, object: nil) } }
@@ -160,7 +176,7 @@ struct AppLibraryView: View {
             }
             Menu {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.ipa.path)]) }
-                    .disabled(!app.sourceExists)
+                    .disabled(!sourceExists)
                 Button("Locate IPA…") { locateIPA(app.id) }
                 Divider()
                 Button("Remove from Library", role: .destructive) { model.removeLibraryWorkspace(app.id) }

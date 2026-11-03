@@ -98,7 +98,7 @@ struct ContentView: View {
         .animation(motion ? Chrome.panelSlide : nil, value: panelVisible)
         .animation(motion ? .easeInOut(duration: 0.2) : nil, value: section)
         .onChange(of: section) { _, _ in appearance.selectionFeedback() }
-        .onChange(of: model.currentStage) { _, stage in handleStageChange(stage) }
+        .onReceive(model.operationProgress.$stage.removeDuplicates()) { stage in handleStageChange(stage) }
         .background { keyboardShortcuts }
     }
 

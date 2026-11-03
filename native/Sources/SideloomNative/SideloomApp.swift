@@ -111,9 +111,16 @@ final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !workerMode else { return .terminateNow }
-        model.persistWorkspace()
-        guard model.workspaceIsBusy else { return .terminateNow }
         if waitingToTerminate { return .terminateLater }
+        model.persistWorkspace()
+        if !model.workspaceIsBusy {
+            guard model.pendingLibraryWrites > 0 else {
+                if model.librarySaveFailed { model.errorMessage = "Slip couldn’t save your latest library changes. Keep Slip open and check available storage before quitting." }
+                return model.librarySaveFailed ? .terminateCancel : .terminateNow
+            }
+            finishTermination(sender)
+            return .terminateLater
+        }
         let cancellable = model.isAuthenticating || model.isDownloading || model.isRunningInstallQueue
         let alert = NSAlert()
         alert.messageText = "Slip is still working"
@@ -123,19 +130,28 @@ final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
         alert.addButton(withTitle: "Keep Slip Open")
         alert.addButton(withTitle: cancellable ? "Stop and Quit" : "Quit When Finished")
         guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
-        waitingToTerminate = true
         if model.isDownloading { model.cancelDownload() }
         if model.isRunningInstallQueue { model.stopInstallQueue() }
         if model.isAuthenticating { model.cancelInstall() }
+        finishTermination(sender)
+        return .terminateLater
+    }
+
+    private func finishTermination(_ sender: NSApplication) {
+        waitingToTerminate = true
         Task {
             while model.workspaceIsBusy {
                 try? await Task.sleep(for: .milliseconds(50))
             }
+            let saved = await model.flushLibraryPersistence()
             waitingToTerminate = false
-            model.persistWorkspace()
-            sender.reply(toApplicationShouldTerminate: true)
+            sender.reply(toApplicationShouldTerminate: saved)
+            if !saved { model.errorMessage = "Slip couldn’t save your latest library changes. Keep Slip open and check available storage before quitting." }
         }
-        return .terminateLater
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        model.deviceMonitor?.stop()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

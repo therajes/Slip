@@ -1,6 +1,6 @@
 import Foundation
 
-struct DeviceInfo: Codable, Hashable, Identifiable {
+struct DeviceInfo: Codable, Hashable, Identifiable, Sendable {
     let name: String
     let id: UInt32
     let udid: String
@@ -49,7 +49,7 @@ struct DeviceInfo: Codable, Hashable, Identifiable {
     ]
 }
 
-struct IpaExtensionInfo: Codable, Hashable, Identifiable {
+struct IpaExtensionInfo: Codable, Hashable, Identifiable, Sendable {
     let path: String
     let bundleId: String
     let name: String
@@ -58,7 +58,7 @@ struct IpaExtensionInfo: Codable, Hashable, Identifiable {
     var id: String { path }
 }
 
-struct IpaInfo: Codable, Hashable {
+struct IpaInfo: Codable, Hashable, Sendable {
     let path: String
     let fileName: String
     let appName: String
@@ -137,7 +137,7 @@ struct UninstallAppsRequest: Codable {
     let bundleIds: [String]
 }
 
-struct PlistOverride: Codable, Hashable, Identifiable {
+struct PlistOverride: Codable, Hashable, Identifiable, Sendable {
     var id: UUID
     var key: String
     var valueType: String
@@ -151,7 +151,7 @@ struct PlistOverride: Codable, Hashable, Identifiable {
     }
 }
 
-struct IpaInstallOptions: Codable, Hashable {
+struct IpaInstallOptions: Codable, Hashable, Sendable {
     let appPath: String
     let displayName: String?
     let bundleId: String?

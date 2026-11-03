@@ -1,6 +1,6 @@
 import Foundation
 
-struct IPAFileStamp: Codable, Hashable {
+struct IPAFileStamp: Codable, Hashable, Sendable {
     let size: UInt64
     let modifiedAt: Date
 
@@ -12,7 +12,7 @@ struct IPAFileStamp: Codable, Hashable {
 }
 
 /// Only preparation choices and file references. Secrets stay in Keychain.
-struct SavedAppWorkspace: Codable, Hashable, Identifiable {
+struct SavedAppWorkspace: Codable, Hashable, Identifiable, Sendable {
     var id = UUID()
     var ipa: IpaInfo
     var options: IpaInstallOptions
@@ -26,7 +26,7 @@ struct SavedAppWorkspace: Codable, Hashable, Identifiable {
     var sourceExists: Bool { FileManager.default.fileExists(atPath: ipa.path) }
 }
 
-enum InstallQueueStatus: String, Codable {
+enum InstallQueueStatus: String, Codable, Sendable {
     case review = "Review required"
     case ready = "Ready"
     case installing = "Installing"
@@ -35,14 +35,14 @@ enum InstallQueueStatus: String, Codable {
     case cancelled = "Cancelled"
 }
 
-struct InstallQueueItem: Codable, Hashable, Identifiable {
+struct InstallQueueItem: Codable, Hashable, Identifiable, Sendable {
     var id = UUID()
     var workspace: SavedAppWorkspace
     var status: InstallQueueStatus = .review
     var message: String?
 }
 
-struct AppLibraryState: Codable, Equatable {
+struct AppLibraryState: Codable, Equatable, Sendable {
     var version = 1
     var apps: [SavedAppWorkspace] = []
     var queue: [InstallQueueItem] = []
@@ -57,7 +57,7 @@ struct AppLibraryState: Codable, Equatable {
     }
 }
 
-struct AppLibraryRepository {
+struct AppLibraryRepository: Sendable {
     let fileURL: URL
     static var standard: Self {
         Self(fileURL: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="480" viewBox="0 0 1600 480" role="img" aria-labelledby="title desc">
+  <title id="title">Slip — Your iPhone apps. A native Mac home.</title>
+  <desc id="desc">Slip 2.5. Inspect, customize, install and refresh. A graphite banner with abstract glass app tiles and an iPhone outline.</desc>
+  <defs>
+    <linearGradient id="background" x2="1" y2="1"><stop stop-color="#11151c"/><stop offset="1" stop-color="#232b36"/></linearGradient>
+    <radialGradient id="glow"><stop stop-color="#9bb5c9" stop-opacity=".17"/><stop offset="1" stop-color="#9bb5c9" stop-opacity="0"/></radialGradient>
+    <linearGradient id="glass" x2=".8" y2="1"><stop stop-color="#f4f7fb" stop-opacity=".2"/><stop offset="1" stop-color="#f4f7fb" stop-opacity=".03"/></linearGradient>
+    <linearGradient id="edge" x2="1" y2="1"><stop stop-color="#e7edf5" stop-opacity=".6"/><stop offset=".5" stop-color="#e7edf5" stop-opacity=".1"/><stop offset="1" stop-color="#e7edf5" stop-opacity=".3"/></linearGradient>
+    <clipPath id="frame"><rect width="1600" height="480" rx="28"/></clipPath>
+  </defs>
+  <g clip-path="url(#frame)">
+    <rect width="1600" height="480" fill="url(#background)"/>
+    <ellipse cx="1250" cy="230" rx="500" ry="440" fill="url(#glow)"/>
+    <g fill="none" stroke="#dce7f2" stroke-opacity=".06">
+      <circle cx="1260" cy="240" r="220"/><circle cx="1260" cy="240" r="320"/><circle cx="1260" cy="240" r="420"/>
+    </g>
+    <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+      <text x="80" y="81" fill="#c3cedb" font-size="21" font-weight="600" letter-spacing="5">SLIP</text>
+      <rect x="166" y="56" width="66" height="34" rx="17" fill="#f4f7fb" fill-opacity=".08" stroke="#f4f7fb" stroke-opacity=".16"/>
+      <text x="199" y="79" fill="#dce5ef" font-size="17" font-weight="500" text-anchor="middle">2.5</text>
+      <text x="76" y="202" fill="#f6f8fb" font-size="72" font-weight="650" letter-spacing="-2.5">Your iPhone apps.</text>
+      <text x="76" y="287" fill="#f6f8fb" font-size="72" font-weight="650" letter-spacing="-2.5">A native Mac home.</text>
+      <text x="81" y="360" fill="#aebdcc" font-size="24" letter-spacing=".2">Inspect. Customize. Install. Refresh.</text>
+      <text x="81" y="422" fill="#8e9caa" font-size="17">SwiftUI + Rust</text>
+      <circle cx="229" cy="416" r="2" fill="#718291"/>
+      <text x="246" y="422" fill="#8e9caa" font-size="17">Built for macOS</text>
+    </g>
+    <g transform="translate(1100 63) rotate(8 125 177)">
+      <rect width="218" height="353" rx="46" fill="url(#glass)" stroke="url(#edge)" stroke-width="2"/>
+      <rect x="10" y="10" width="198" height="333" rx="37" fill="#131922" fill-opacity=".7" stroke="#dce7f2" stroke-opacity=".12"/>
+      <rect x="72" y="23" width="74" height="19" rx="9.5" fill="#080c12"/>
+      <rect x="77" y="327" width="64" height="4" rx="2" fill="#aebdcc" fill-opacity=".5"/>
+    </g>
+    <g transform="translate(993 140) rotate(-12 78 78)">
+      <rect width="157" height="157" rx="37" fill="url(#glass)" stroke="url(#edge)" stroke-width="2"/>
+      <rect x="46" y="45" width="65" height="67" rx="16" fill="none" stroke="#edf3fb" stroke-opacity=".85" stroke-width="4"/>
+      <path d="M78 61v35m-14-13 14 14 14-14" fill="none" stroke="#edf3fb" stroke-opacity=".9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g transform="translate(1303 269) rotate(13 62 62)">
+      <rect width="124" height="124" rx="30" fill="url(#glass)" stroke="url(#edge)" stroke-width="2"/>
+      <path d="M83 51a25 25 0 1 0 2 22M84 36v19H65" fill="none" stroke="#d4e7df" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <rect x="1" y="1" width="1598" height="478" rx="27" fill="none" stroke="#edf3fb" stroke-opacity=".1"/>
+  </g>
+</svg>

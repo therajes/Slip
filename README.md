@@ -1,61 +1,87 @@
-# Slip
+<div align="center">
+  <img src="design/repository-header.svg" width="100%" alt="Slip — Your iPhone apps. A native Mac home.">
+  <p>Inspect, customize, install, and refresh IPAs in a Liquid Glass workspace.</p>
+  <p>
+    <img src="https://img.shields.io/badge/Slip-2.5-64748b?style=flat-square" alt="Slip 2.5">
+    <img src="https://img.shields.io/badge/macOS-26%2B-24292f?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 or newer">
+    <img src="https://img.shields.io/badge/SwiftUI_%2B_Rust-native-777?style=flat-square" alt="Built with SwiftUI and Rust">
+  </p>
+  <p>
+    <a href="https://github.com/therajes/Slip/releases/latest"><strong>Download Slip</strong></a> ·
+    <a href="docs/RELEASE_NOTES_2.5.0.md">What’s new in 2.5</a> ·
+    <a href="docs/GALLERY.md">Screenshot gallery</a> ·
+    <a href="https://github.com/therajes/Slip/tree/main">Source</a>
+  </p>
+</div>
 
-Slip is a native Mac home for installing and refreshing IPA files on personal iPhones. Its SwiftUI interface uses the macOS 27 Liquid Glass system, while a focused Rust core handles IPA preparation, Apple signing, and direct device transfer.
+[![Slip 2.5 App Library with saved IPA workspaces](design/screenshots/2.5/slip-library.png)](design/media/slip-2.5-demo.mp4)
 
-Slip is intentionally iPhone-only. It does not target Apple TV, Apple-silicon Macs, jailbroken-device workflows, or permanent-signing claims.
+Slip brings a SwiftUI and AppKit interface together with a Rust core for IPA preparation, Apple signing, and direct iPhone transfer. Save your work in an App Library, review each install, and keep refresh recipes beside the apps they belong to.
 
-![Slip's native Liquid Glass installer](design/screenshots/slip-install.png)
+**[Watch the 13-second walkthrough →](design/media/slip-2.5-demo.mp4)** · Library search, floating navigation, Auto Refresh, and Settings. Recorded in the native app.
 
-![Slip's local Apple Account profiles](design/screenshots/slip-accounts.png)
+## A workspace for the whole workflow
 
-![Slip drag-to-Applications disk image](design/screenshots/slip-dmg.png)
+| Make it yours | Keep it organized | Stay connected |
+| :--- | :--- | :--- |
+| Drop an IPA or import from Finder or HTTPS. Inspect artwork, identity, versions, extensions, and App ID cost before signing. | Keep saved workspaces in the App Library. Import multiple IPAs and review a sequential installation queue. | Install over USB or a paired local network. Browse the connected iPhone’s apps and manage saved refresh recipes. |
+| Change the Home Screen name, bundle ID, icon, minimum iOS version, and supported plist values. Keep or remove individual extensions, or export a customized IPA. | Resume your choices, follow preparation and transfer progress, and find past actions in Activity with privacy redaction. | Refresh Guard can re-sign saved apps about 24 hours before a free profile expires, when the Mac and paired iPhone are reachable. |
 
-Explore the full [Visual Showcase and UI Gallery](docs/GALLERY.md).
+<table>
+  <tr>
+    <td width="50%"><img src="design/screenshots/2.5/slip-autorefresh.png" alt="Slip 2.5 Auto Refresh workspace"><br><strong>Refresh, at a glance</strong><br>Saved recipes and renewal status in one place.</td>
+    <td width="50%"><img src="design/screenshots/slip-iphoneapps-dark.png" alt="Slip iPhone app inventory"><br><strong>A view of your iPhone</strong><br>App inventory, explicit selections, and device actions.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="design/screenshots/2.5/slip-settings.png" alt="Slip 2.5 appearance and behavior settings"><br><strong>Comfortably native</strong><br>Theme and backdrop controls, with system accessibility preferences.</td>
+    <td width="50%"><img src="design/screenshots/slip-dmg.png" alt="Slip drag-to-Applications disk image"><br><strong>Drag. Drop. Open.</strong><br>A familiar macOS installer.</td>
+  </tr>
+</table>
 
-## Highlights
+Library, Auto Refresh, and Settings are captured from 2.5. Device inventory and disk-image images are from earlier releases. Explore the [gallery](docs/GALLERY.md) or [feature matrix](docs/FEATURE_MATRIX.md) for more.
 
-- Native Liquid Glass interface built with SwiftUI and AppKit.
-- Adaptive light and dark glass icon renditions, with Automatic, Light Glass, and Dark Glass preferences.
-- Drag-and-drop, Finder import, `slip://install?url=…`, and direct HTTPS IPA downloads.
-- IPA diagnostics for identity, versions, executable encryption, size, extensions, and free-account App ID cost.
-- Real embedded IPA artwork plus an exact connected-iPhone model preview derived from trusted hardware metadata.
-- Change the Home Screen name, bundle ID, icon, minimum iOS version, file-sharing flags, supported-device restriction, and typed top-level Info.plist values.
-- Keep or remove each app extension independently, with remove-all as the free-account-friendly default.
-- Export a customized IPA without installing it.
-- Apple Account profiles with verified-name capture, local custom avatars, two-factor prompts, and opt-in macOS Keychain storage; credentials never appear in command arguments or logs.
-- Fast streamed USB installation with separate preparation, signing, transfer, verification, retry, and recovery feedback.
-- Paired local-network discovery, one-click Wi-Fi pairing enablement, and automatic USB fallback.
-- Refresh Guard re-signs saved apps about 24 hours before a free seven-day profile expires, provided the Mac and paired iPhone can reach each other.
-- iPhone app inventory with explicit selection, bundle-ID copy, managed-app refresh, confirmed uninstall, saved refresh recipes, activity history, and privacy redaction.
-- Preflight validation that blocks encrypted IPAs, incompatible iOS targets, invalid bundle IDs, missing icons, duplicate keys, and unsafe identity plist overrides before signing.
-- Raw-copy IPA preparation that leaves unchanged compressed entries untouched; the 1.1 benchmark reduced a 196 MB customization pass from 4.42 seconds to 1.15 seconds on the release Mac.
+## New in 2.5
 
-See the [feature matrix](docs/FEATURE_MATRIX.md) for the exact shipped scope and current iOS 27 limitations.
+This release focuses on a responsive workspace and reliable device state, while retaining saved libraries and renewal times.
 
-## Install
+- **Quieter autosaving.** Targeted, debounced saves run off the main actor; unchanged snapshots are skipped and newer edits take precedence.
+- **Focused progress updates.** Install and download progress update their controls without invalidating the whole workspace.
+- **Reusable artwork.** Background decoding, bounded image caches, and lazy library rows reduce repeated work.
+- **Device-specific actions.** Stale inventory responses are discarded. Selections, uninstall confirmations, and renewal cleanup stay tied to the intended iPhone.
+- **Connection-aware discovery.** USB events, app activation, and waking the Mac trigger discovery; network polling pauses in the background.
 
-1. Download the latest `Slip-*.dmg` from GitHub Releases.
-2. Drag Slip to Applications using the installer window.
-3. Open Slip, connect and trust the iPhone once over USB, and enable Developer Mode on the iPhone.
-4. Add the Apple Account used for personal development. Saving its password in Keychain is optional, but required for unattended Refresh Guard runs.
-5. Drop an IPA, review the changes, and select **Sign & Install**.
+Read the [2.5 release notes](docs/RELEASE_NOTES_2.5.0.md) for implementation details, data preservation, and validation boundaries.
 
-For network discovery, Finder must first recognize the same paired iPhone and the Mac and iPhone must be on the same normal local network. Personal Hotspot routing often prevents peer discovery.
+## Get started
 
-## The seven-day rule
+**You’ll need:** an Apple-silicon Mac running macOS 26 or newer, a personal iPhone, an Apple Account, and an IPA you are authorized to use.
 
-Apple Personal Team provisioning profiles expire after seven days and stock iOS limits free accounts to three active sideloaded apps. Slip cannot safely or legally remove either server-enforced limit. Refresh Guard performs a normal re-sign and reinstall before expiry; it requires this Mac to be awake, the saved IPA and opt-in Keychain credentials to remain available, and the paired iPhone to be reachable by network or USB.
+1. [Download the latest available `Slip-*.dmg`](https://github.com/therajes/Slip/releases/latest) and drag Slip to **Applications**.
+2. Connect the iPhone over USB, trust the Mac, and enable **Developer Mode** on the iPhone.
+3. Add your Apple Account. Password storage in macOS Keychain is optional; unattended Refresh Guard requires it.
+4. Drop an IPA into Slip, review its details and customizations, then select **Sign & Install**.
 
-## Build the native app
+For Wi-Fi discovery, Finder must first recognize the paired iPhone, and both devices must share a normal local network. Personal Hotspot routing can prevent peer discovery. Slip supports `slip://install?url=…` for direct IPA links.
 
-Requirements: macOS 26 or newer, Xcode 26 or newer with command-line tools, Rust, and an Apple-silicon Mac. The interface uses native Liquid Glass throughout. Accessibility and performance settings retain solid surfaces when requested.
+### Refresh Guard and free accounts
+
+Apple Personal Team profiles expire after seven days, and stock iOS limits free accounts to three active sideloaded apps. Slip works within those limits. Refresh Guard performs a normal re-sign and reinstall; the Mac must be awake, the saved IPA and opted-in Keychain credentials available, and the paired iPhone reachable over Wi-Fi or USB.
+
+Slip targets personal iPhones. Apple TV, Apple-silicon Mac app installation, jailbroken-device workflows, and permanent signing are outside its scope.
+
+## Build from source
+
+The native release uses **Xcode 27.2 / macOS SDK 27.2**, with a **macOS 26** deployment target. Install Xcode command-line tools and Rust on an Apple-silicon Mac, then run:
 
 ```sh
 ./native/build.sh
-./native/create-dmg.sh native/build/Slip.app native/dist/Slip-2.4.0.dmg
+./native/create-dmg.sh native/build/Slip.app native/dist/Slip-2.5.0.dmg
 ```
 
-Verification:
+For the native architecture and development details, see [native/README.md](native/README.md).
+
+<details>
+<summary>Development checks</summary>
 
 ```sh
 cd src-tauri
@@ -64,20 +90,18 @@ cargo check --no-default-features --bin sideloom-core
 cargo test --no-default-features --lib
 cd ../native
 swift build -c debug
+swift test
 ```
+
+</details>
 
 ## Privacy and security
 
-All signing, customization, and device communication happen locally except requests required by Apple developer services and the configured anisette service. Passwords travel to the bundled core over an anonymous stdin pipe and can be stored only through macOS Keychain after explicit consent. Slip does not include analytics or an account server.
+Signing, customization, and device communication happen locally, apart from requests to Apple developer services and the configured anisette service. Slip has no analytics or account server. Passwords reach the bundled core through an anonymous stdin pipe, never command arguments or logs; Keychain storage requires explicit consent.
 
-Two-factor verification appears beneath the password and stays visible through
-developer-session setup. Slip owns the sign-in lifecycle, safe recovery policy,
-provider isolation, and Keychain-backed developer sessions. “This Mac” never
-silently switches providers; remote compatibility requires an explicitly selected
-HTTPS endpoint. Local authentication may be unavailable on newer macOS versions.
-See [authentication reliability and current limits](docs/AUTHENTICATION_RELIABILITY.md).
+Apple Account profiles support verified names, local avatars, and two-factor prompts that remain visible during developer-session setup. “This Mac” never silently switches authentication providers. Remote compatibility requires an explicitly selected HTTPS endpoint, and local authentication can be unavailable on newer macOS versions. Read [authentication reliability and current limits](docs/AUTHENTICATION_RELIABILITY.md).
 
-Only install or modify apps you are authorized to use. Review [SECURITY.md](SECURITY.md) before reporting a sensitive issue.
+Preflight checks reject encrypted IPAs, incompatible iOS targets, invalid bundle IDs, missing icons, duplicate keys, and unsafe identity overrides before signing. Only install or modify apps you are authorized to use. See [SECURITY.md](SECURITY.md) to report a sensitive issue.
 
 ## Credits and license
 
@@ -87,6 +111,6 @@ The native interface includes modified window and glass UI code from **Droppy Co
 
 The combined native application incorporating that UI is available under GNU AGPL version 3 with Droppy Code's additional attribution, origin, and trademark terms; see [native/LICENSE](native/LICENSE) and the preserved [third-party notices](native/THIRD_PARTY_NOTICES.md). The original MIT-licensed Slip/iLoader code and Rust core retain their existing copyright and [MIT license notices](LICENSE), including Copyright (c) 2025 nab138. This does not replace those original notices or claim ownership of upstream code.
 
-The current adaptations and build scripts are available in this local source checkout. Distributing a build requires providing its corresponding source and notices under the applicable license terms; this README does not claim that these local adaptations have been published online. The app bundles its license texts and displays attribution in About Slip.
+The corresponding source and build scripts are included in this repository. Distributing a build requires providing its corresponding source and notices under the applicable license terms. The app bundles its license texts and displays attribution in About Slip.
 
 Original iLoader branding terms remain documented in [LICENSE-BRANDING](LICENSE-BRANDING). Slip is not affiliated with Apple, Sideloadly, or the iLoader maintainers.

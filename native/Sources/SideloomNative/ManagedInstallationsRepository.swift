@@ -34,4 +34,12 @@ struct ManagedInstallationsRepository {
             if !enabled { entries[index].status = "Paused" }
         }
     }
+
+    func remove(bundleIDs: Set<String>, deviceUDID: String) throws -> Int {
+        try update { entries in
+            let before = entries.count
+            entries.removeAll { $0.deviceUDID == deviceUDID && bundleIDs.contains($0.bundleId) }
+            return before - entries.count
+        }
+    }
 }

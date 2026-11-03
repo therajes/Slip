@@ -1,5 +1,10 @@
 # Slip Native
 
+Slip 2.5 improves targeted background autosaving, progress-update isolation,
+cached artwork, lazy library rows and device-scoped inventory operations.
+It updates the existing app while retaining saved data and renewal times.
+See [the 2.5 release notes](../docs/RELEASE_NOTES_2.5.0.md).
+
 Slip Native is the SwiftUI macOS application. It requires macOS 26 or newer and uses Apple's native Liquid Glass APIs. It bundles a separate Rust executable for Apple signing and iPhone communication.
 
 Slip 2.4 adds an App Library, restored workspaces, multi-IPA imports and a reviewed,
@@ -30,7 +35,7 @@ The native link step explicitly records the active macOS SDK from `xcrun` in
 `LC_BUILD_VERSION`, independently of the macOS 26 deployment target. This avoids
 SwiftPM's Xcode build path tagging the executable with SDK 15 when using Xcode 27.
 
-Run `./create-dmg.sh build/Slip.app dist/Slip-1.3.0.dmg` to create the visual drag-to-Applications installer.
+Run `./create-dmg.sh build/Slip.app dist/Slip-2.5.0.dmg` to create the visual drag-to-Applications installer.
 
 
 ## Credits and licensing
@@ -39,7 +44,7 @@ This native application includes a modified adaptation of window, sidebar, toolb
 
 The combined native application incorporating that UI is available under GNU AGPL version 3 with the upstream additional terms in [LICENSE](LICENSE). The complete upstream [third-party notices](THIRD_PARTY_NOTICES.md) are preserved; listing an upstream component does not imply that Slip bundles it. Pre-existing MIT-licensed Slip/iLoader source and the original core retain their notices, including Copyright (c) 2025 nab138 in the unchanged [root MIT license](../LICENSE).
 
-The corresponding source and build scripts for these current adaptations are available in this local checkout. Distributors must provide corresponding source and notices for their builds under the applicable license terms. These local adaptations are not represented as already published online.
+The corresponding source and build scripts for these adaptations are included in this repository. Distributors must provide corresponding source and notices for their builds under the applicable license terms.
 
 The build bundles `Credits.rtf` for About Slip, the AGPL and additional terms as `License.txt`, the original MIT license as `OriginalLicense.txt`, and the preserved notices as `ThirdPartyNotices.txt` in the app's Resources directory.
 
