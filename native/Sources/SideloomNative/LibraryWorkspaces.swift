@@ -239,6 +239,7 @@ extension AppModel {
         }
         persistWorkspace()
         queueCancelled = false
+        pauseQueueAfterCurrent = false
         isRunningInstallQueue = true
         Task { await runInstallQueue(pending.map(\.id)) }
     }
@@ -274,7 +275,7 @@ extension AppModel {
             else { installed = await installCurrentWorkspace() }
             setQueueResult(id, installed ? .installed : queueCancelled ? .cancelled : .failed,
                            message: installed ? nil : errorMessage ?? (queueCancelled ? "Queue stopped. Review before retrying." : "Installation stopped. Review this app before retrying."))
-            if !installed { break }
+            if !installed || pauseQueueAfterCurrent { break }
         }
     }
 
@@ -283,6 +284,11 @@ extension AppModel {
         library.queue[index].status = status
         library.queue[index].message = message
         persistWorkspace()
+    }
+
+    func cancelCurrentQueueApp() {
+        guard activeQueueID != nil else { return }
+        cancelInstall()
     }
 
     func stopInstallQueue() {

@@ -1,14 +1,14 @@
 # Slip feature matrix
 
-This matrix is the release contract for Slip 1.1.2. Slip is designed only for personal iPhones running stock iOS.
+This matrix is the feature overview for Slip 2.6. Slip is designed only for personal iPhones running stock iOS.
 
 ## Shipped
 
 | Area | Capability | Notes |
 | --- | --- | --- |
-| IPA input | Drag and drop, Finder, HTTPS URL, `slip://` | URL imports retry transient network failures and are kept locally for refresh. |
+| IPA input | Drag and drop, Finder, HTTPS URL, `slip://` | URL imports retry transient failures. Supported transfers can pause and resume after URL, ETag and length validation. |
 | Inspection | Identity, artwork, version, build, minimum iOS, size, main executable, encryption | Artwork follows the IPA’s declared icon metadata, with safe fallbacks for unusual names and legacy Apple CgBI PNGs; encrypted executables are blocked before signing. |
-| Extensions | Inspect, keep individually, remove individually, remove all | Slip shows the resulting App ID cost before installation. |
+| Extensions | Inspect, keep individually, remove individually, remove all | The account-aware planner shows new and reusable IDs, optional extension costs and the last registration check. |
 | Identity | App name, bundle ID, icon | Extension bundle IDs follow the changed main bundle ID where safe. |
 | Compatibility | Minimum iOS override, remove `UISupportedDevices` | Overrides cannot make an app compatible when its binary or frameworks require newer APIs. |
 | Documents | Enable Files/Finder document sharing | Adds the standard file-sharing plist flags. |
@@ -18,9 +18,9 @@ This matrix is the release contract for Slip 1.1.2. Slip is designed only for pe
 | Accounts | Apple Account profiles, local avatars, 2FA, certificate management | Password storage is opt-in and uses macOS Keychain; verified names come from Apple authentication while custom photos stay local. |
 | Installation | Direct stream, phase progress, bounded retries | A reconnect gets a fresh device session rather than reusing a broken channel. |
 | Devices | USB and paired local-network discovery, exact model preview | Slip resolves the trusted hardware identifier and renders model-aware Dynamic Island/notch and display proportions. USB is preferred for large transfers. |
-| Refresh | Saved recipes, Refresh All, launch-at-login guard | Default due time is about 24 hours before the seven-day deadline. |
+| Refresh | Saved recipes, Refresh All, launch-at-login guard | Due time is one day before signed-profile expiry; fallback dates are labeled estimated. Wake recovery and optional quiet notifications are included. |
 | Inventory | Native app icons, select, copy bundle IDs, refresh managed apps, uninstall user apps | Icons are read from the paired iPhone through SpringBoard; uninstall requires confirmation, reports partial failures, and removes matching refresh recipes so removed apps stay removed. |
-| Diagnostics | Activity timeline, copyable logs, privacy mode | Privacy mode hides Apple IDs, device IDs, and the user home path. |
+| Diagnostics | Activity timeline, actionable recovery, previewable redacted support reports | Privacy mode hides Apple IDs, device IDs, and the user home path. |
 | Appearance | Native Liquid Glass, adaptive light/dark glass icon, dimensional symbols, motion control | Automatic icon mode follows the Mac appearance; Reduce Motion always takes priority. |
 | Preflight | Bundle ID, iOS version, encryption, custom icon, typed plist, duplicate/protected-key validation | Blocking issues disable installation and explain the correction before Apple signing starts. |
 | Performance | Raw transfer of unchanged compressed IPA entries | A 196 MB test IPA prepared in 1.15 seconds versus 4.42 seconds in 1.0 on the same Mac. |
@@ -46,8 +46,8 @@ This matrix is the release contract for Slip 1.1.2. Slip is designed only for pe
 
 ## Next engineering priorities
 
-1. A persistent multi-IPA queue with pause/resume and per-item retry policy.
+1. App update feeds, version history, customization presets and managed IPA storage (planned for 2.7).
 2. Provisioning-profile and entitlement diff preview before signing.
-3. A structured device support bundle for pairing and Installation Proxy failures.
-4. Optional local notifications when a refresh is due, missed, or completed.
+3. Richer structured device diagnostics beyond the current redacted Activity report.
+4. Live-device validation of renewal after sleep/wake and notification delivery.
 5. Reproducible release signing and notarization when a distribution Developer ID is available.

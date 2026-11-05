@@ -4,6 +4,7 @@ import SwiftUI
 struct ActivityView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var appearance: AppearanceController
+    @State private var reportPreview: String?
     @State private var search = ""
     @State private var attentionOnly = false
 
@@ -17,6 +18,21 @@ struct ActivityView: View {
     var body: some View {
         WorkspacePage {
             PageHeader(eyebrow: "ACTIVITY", title: "Activity", subtitle: "Follow your installations, renewals and device connections.")
+            if let error = model.errorMessage {
+                let diagnosis = RecoveryDiagnosis.explain(error)
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(diagnosis.nextStep)
+                        Text(model.hideSensitiveInfo ? SupportReport.redact(error) : error)
+                            .font(.caption).foregroundStyle(Chrome.secondaryText).textSelection(.enabled)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                } label: { Label(diagnosis.title, systemImage: "exclamationmark.triangle") }
+            }
+            Button("Preview Support Report", systemImage: "doc.text.magnifyingglass") {
+                let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+                reportPreview = "Slip \(version)\nmacOS \(ProcessInfo.processInfo.operatingSystemVersionString)\n\n"
+                    + SupportReport.redact(model.activity.joined(separator: "\n"))
+            }
             GroupBox {
                 HStack(spacing: 12) {
                     Image(systemName: model.hideSensitiveInfo ? "lock.shield" : "eye")
@@ -81,6 +97,21 @@ struct ActivityView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: Binding(get: { reportPreview != nil }, set: { if !$0 { reportPreview = nil } })) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Support Report").font(.title2)
+                Text("Review before sharing. URLs, account addresses, device identifiers and local paths are removed. Check any remaining app names or messages for private information.").font(.caption)
+                ScrollView { Text(reportPreview ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                HStack {
+                    Button("Close") { reportPreview = nil }
+                    Spacer()
+                    Button("Copy Report") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(reportPreview ?? "", forType: .string)
+                    }
+                }
+            }.padding(24).frame(width: 640, height: 480)
         }
     }
 

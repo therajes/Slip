@@ -77,6 +77,7 @@ final class AppModel: ObservableObject {
     @Published var accountAppIDs: [AppleAppID] = []
     @Published var appIDQuota: AppIDQuotaInfo?
     @Published var certificateRevocationNotice: String?
+    @Published var resourcesTeamID: String?
     @Published var resourcesAccount = ""
     @Published var isManagingAccount = false
     @Published var resourcesError: String?
@@ -121,6 +122,9 @@ final class AppModel: ObservableObject {
     @Published var loginStage = ""
 
     let core: CoreClient
+    @Published var pausedDownload: PausedIPADownload?
+    @Published var pauseQueueAfterCurrent = false
+    private let downloadControl = IPADownloadControl()
     private var downloadTask: Task<URL, Error>?
     private var downloadGeneration: UUID?
     @Published var authenticationMode = UserDefaults.standard.string(forKey: "authenticationMode") ?? "local" {
@@ -477,6 +481,7 @@ final class AppModel: ObservableObject {
                         throw SideloomError.message("Apple returned no certificate or App ID list. Refresh to try again.")
                     }
                     resourcesAccount = email
+                    resourcesTeamID = event.teamId
                     accountCertificates = event.certificates ?? []
                     accountAppIDs = event.appIds ?? []
                     resourcesLoaded = true
@@ -611,6 +616,9 @@ final class AppModel: ObservableObject {
             errorMessage = IPADownloadError.invalidURL.localizedDescription
             return
         }
+        let resume = pausedDownload.flatMap { $0.url == url ? $0 : nil }
+        pausedDownload = nil
+        let control = downloadControl
         let generation = UUID()
         downloadGeneration = generation
         isDownloading = true
@@ -620,7 +628,7 @@ final class AppModel: ObservableObject {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appending(path: "app.sideloom.native/Imports", directoryHint: .isDirectory)
         let task = Task { [weak self] in
-            try await IPAURLDownloadService().download(url, to: directory) { [weak self] progress in
+            try await IPAURLDownloadService().download(url, to: directory, control: control, resume: resume) { [weak self] progress in
                 Task { @MainActor [weak self] in
                     guard let self, self.downloadGeneration == generation else { return }
                     self.downloadProgress = progress
@@ -648,17 +656,30 @@ final class AppModel: ObservableObject {
             else if ipa?.path != destination.path { try? FileManager.default.removeItem(at: destination) }
         } catch {
             guard downloadGeneration == generation else { return }
-            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+            if let paused = error as? PausedIPADownload {
+                pausedDownload = paused
+                currentStage = "Download paused"
+                appendActivity("Download paused. The partial IPA is preserved until you resume or cancel.")
+            } else if error is CancellationError || (error as? URLError)?.code == .cancelled {
                 currentStage = "Download cancelled"
             } else {
+                if let resume { pausedDownload = resume }
                 currentStage = "Download failed"
-                errorMessage = IPADownloadPolicy.message(error)
+                errorMessage = (error as? SideloomError)?.localizedDescription ?? IPADownloadPolicy.message(error)
                 appendActivity("IPA download failed: \(errorMessage ?? "Connection failed")")
             }
         }
     }
 
+    func pauseDownload() { downloadControl.pause() }
+
+    func resumeDownload() async {
+        guard let pausedDownload else { return }
+        await downloadIPA(from: pausedDownload.url.absoluteString)
+    }
+
     func cancelDownload() {
+        if pausedDownload != nil { pausedDownload = nil; currentStage = "Download cancelled" }
         guard isDownloading else { return }
         downloadGeneration = nil
         downloadTask?.cancel()
@@ -1065,8 +1086,9 @@ final class AppModel: ObservableObject {
                             var refreshed = item
                             let now = Date()
                             refreshed.installedAt = now
-                            refreshed.expiresAt = now.addingTimeInterval(7 * 24 * 60 * 60)
-                            refreshed.nextRefreshAt = now.addingTimeInterval(6 * 24 * 60 * 60)
+                            refreshed.profileExpiryConfirmed = event.profileExpiresAt != nil
+                            refreshed.expiresAt = event.profileExpiresAt.map { Date(timeIntervalSince1970: $0) } ?? now.addingTimeInterval(7 * 86400)
+                            refreshed.nextRefreshAt = refreshed.expiresAt.addingTimeInterval(-86400)
                             refreshed.lastAttemptAt = now
                             refreshed.status = "Scheduled"
                             refreshed.lastError = nil
@@ -1076,7 +1098,8 @@ final class AppModel: ObservableObject {
                         let entry = try AutoRefreshStore.recordSuccessfulInstall(
                             ipa: ipa,
                             request: request,
-                            enabled: keepAutomaticallyRefreshed
+                            enabled: keepAutomaticallyRefreshed,
+                            profileExpiresAt: event.profileExpiresAt
                         )
                         reloadManagedInstallations()
                         if entry.enabled {

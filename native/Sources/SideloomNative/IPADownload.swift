@@ -4,6 +4,7 @@ struct IPADownloadProgress: Sendable {
     var received: Int64 = 0
     var expected: Int64? = nil
     var bytesPerSecond: Double = 0
+    var canPause = false
     var attempt: Int = 1
     var retryDelay: Int? = nil
     var fraction: Double? { expected.flatMap { $0 > 0 ? min(1, Double(received) / Double($0)) : nil } }
@@ -61,13 +62,43 @@ enum IPADownloadPolicy {
     }
 }
 
+struct PausedIPADownload: Error, @unchecked Sendable {
+    let data: Data
+    let url: URL
+    let validator: String
+    let length: String
+}
+
+final class IPADownloadControl: @unchecked Sendable {
+    private let lock = NSLock()
+    private var action: (() -> Void)?
+    func register(_ action: (() -> Void)?) { lock.lock(); self.action = action; lock.unlock() }
+    func pause() { lock.lock(); let action = action; lock.unlock(); action?() }
+}
+
 struct IPAURLDownloadService: Sendable {
-    func download(_ url: URL, to directory: URL,
+    func download(_ url: URL, to directory: URL, control: IPADownloadControl? = nil, resume: PausedIPADownload? = nil,
                   progress: @escaping @Sendable (IPADownloadProgress) -> Void) async throws -> URL {
+        if let resume {
+            var request = URLRequest(url: url)
+            request.httpMethod = "HEAD"
+            let config = URLSessionConfiguration.ephemeral
+            config.httpCookieStorage = nil
+            config.urlCredentialStorage = nil
+            let session = URLSession(configuration: config)
+            defer { session.invalidateAndCancel() }
+            let (_, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  http.url == resume.url,
+                  http.value(forHTTPHeaderField: "ETag") == resume.validator,
+                  http.value(forHTTPHeaderField: "Content-Length") == resume.length else {
+                throw SideloomError.message("The remote file changed or could not be verified. Cancel this paused download and start a fresh transfer.")
+            }
+        }
         for attempt in 1...3 {
             try Task.checkCancellation()
             do {
-                return try await IPAFileDownload(url: url, directory: directory, attempt: attempt, progress: progress).run()
+                return try await IPAFileDownload(url: url, directory: directory, attempt: attempt, control: control, resume: resume, progress: progress).run()
             } catch {
                 try Task.checkCancellation()
                 guard let delay = IPADownloadPolicy.retryDelay(error, attempt: attempt) else { throw error }
@@ -82,6 +113,9 @@ struct IPAURLDownloadService: Sendable {
 /// URLSession writes large IPAs to disk. The delegate moves the temporary file
 /// before URLSession removes it, and cancellation finishes its continuation once.
 private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let control: IPADownloadControl?
+    private let resume: PausedIPADownload?
+    private var pausing = false
     private let url: URL
     private let directory: URL
     private let attempt: Int
@@ -95,7 +129,8 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
     private var started = Date()
     private var lastProgress = Date.distantPast
 
-    init(url: URL, directory: URL, attempt: Int, progress: @escaping @Sendable (IPADownloadProgress) -> Void) {
+    init(url: URL, directory: URL, attempt: Int, control: IPADownloadControl?, resume: PausedIPADownload?, progress: @escaping @Sendable (IPADownloadProgress) -> Void) {
+        self.control = control; self.resume = resume
         self.url = url; self.directory = directory; self.attempt = attempt; self.progress = progress
     }
 
@@ -114,13 +149,31 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
                 config.timeoutIntervalForResource = 3600
                 let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
                 self.session = session
-                let task = session.downloadTask(with: URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+                let task = resume.map { session.downloadTask(withResumeData: $0.data) } ?? session.downloadTask(with: URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
                 self.task = task
                 started = Date()
                 lock.unlock()
                 task.resume()
             }
         } onCancel: { self.cancel() }
+    }
+
+    private func pause() {
+        lock.lock()
+        guard let task, let response = task.response as? HTTPURLResponse,
+              let validator = response.value(forHTTPHeaderField: "ETag"), !validator.hasPrefix("W/"),
+              let length = response.value(forHTTPHeaderField: "Content-Range")?.split(separator: "/").last.map(String.init) ?? response.value(forHTTPHeaderField: "Content-Length"),
+              response.value(forHTTPHeaderField: "Accept-Ranges")?.lowercased() == "bytes",
+              let finalURL = response.url, !finished else { lock.unlock(); return }
+        pausing = true
+        lock.unlock()
+        task.cancel { data in
+            if let data {
+                self.finish(.failure(PausedIPADownload(data: data, url: finalURL, validator: validator, length: length)))
+            } else {
+                self.finish(.failure(SideloomError.message("The server could not preserve this transfer. Start a fresh download.")))
+            }
+        }
     }
 
     private func cancel() {
@@ -140,6 +193,7 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
         self.session = nil
         task = nil
         lock.unlock()
+        control?.register(nil)
         continuation?.resume(with: result)
         session?.finishTasksAndInvalidate()
         return true
@@ -153,10 +207,15 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
         if report { lastProgress = now }
         let elapsed = max(now.timeIntervalSince(started), 0.1)
         lock.unlock()
+        let response = downloadTask.response as? HTTPURLResponse
+        let canPause = response?.value(forHTTPHeaderField: "Accept-Ranges")?.lowercased() == "bytes"
+            && response?.value(forHTTPHeaderField: "ETag").map { !$0.hasPrefix("W/") } == true
+            && response?.value(forHTTPHeaderField: "Content-Length") != nil
+        if canPause { control?.register { [weak self] in self?.pause() } }
         if report {
             progress(IPADownloadProgress(received: totalBytesWritten,
                                          expected: totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil,
-                                         bytesPerSecond: Double(totalBytesWritten) / elapsed, attempt: attempt))
+                                         bytesPerSecond: Double(totalBytesWritten) / elapsed, canPause: canPause, attempt: attempt))
         }
     }
 
@@ -192,6 +251,7 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        finish(.failure(error ?? URLError(.badServerResponse)))
+        lock.lock(); let pausing = pausing; lock.unlock()
+        if !pausing { finish(.failure(error ?? URLError(.badServerResponse))) }
     }
 }

@@ -280,6 +280,7 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
     emit_progress("prepare", 0.0, "Preparing IPA");
     let prepared = prepare_ipa_in(&std::env::temp_dir(), &request.options)?;
     emit_progress("prepare", 1.0, "IPA prepared");
+    let mut profile_expires_at: Option<f64> = None;
     let result: Result<(), AppError> = async {
         emit_progress("sign", 0.01, "Registering device");
         let provider = get_provider(&request.device).await?;
@@ -313,6 +314,7 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             )
             .await
             .map_err(AppError::from)?;
+        profile_expires_at = signed_profile_expiry(&signed_app);
         emit_progress("sign", 1.0, "App signed");
 
         let unique = SystemTime::now()
@@ -373,8 +375,36 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
     .await;
     let _ = std::fs::remove_file(prepared);
     result?;
-    emit(json!({ "type": "completed" }));
+    emit(json!({ "type": "completed", "profileExpiresAt": profile_expires_at }));
     Ok(())
+}
+
+// Use the earliest deadline across the main app and its signed extensions.
+fn signed_profile_expiry(app: &std::path::Path) -> Option<f64> {
+    #[cfg(target_os = "macos")]
+    {
+        let mut earliest: Option<f64> = None;
+        for entry in std::fs::read_dir(app).ok()? {
+            let entry = entry.ok()?;
+            if entry.file_type().ok()?.is_symlink() { continue; }
+            let path = entry.path();
+            let value = if path.is_dir() {
+                signed_profile_expiry(&path)
+            } else if path.file_name().and_then(|name| name.to_str()) == Some("embedded.mobileprovision") {
+                std::process::Command::new("/usr/bin/security")
+                    .args(["cms", "-D", "-i"]).arg(&path).output().ok()
+                    .filter(|output| output.status.success())
+                    .and_then(|output| plist::Value::from_reader(std::io::Cursor::new(output.stdout)).ok())
+                    .and_then(|value| value.as_dictionary()?.get("ExpirationDate")?.as_date())
+                    .and_then(|date| std::time::SystemTime::from(date).duration_since(UNIX_EPOCH).ok())
+                    .map(|duration| duration.as_secs_f64())
+            } else { None };
+            if let Some(value) = value { earliest = Some(earliest.map_or(value, |old| old.min(value))); }
+        }
+        earliest
+    }
+    #[cfg(not(target_os = "macos"))]
+    { let _ = app; None }
 }
 
 fn session_expired(error: &AppError) -> bool {
@@ -819,7 +849,7 @@ async fn account_resources(
             emit(json!({"type":"appIdQuota","limit":limit,"remaining":remaining,"used":used}));
             let app_ids: Vec<_> = app_ids.app_ids.iter().map(|app| json!({ "id": app.app_id_id, "name": app.name, "bundleId": app.identifier })).collect();
             emit(
-                json!({ "type": "accountResources", "certificates": certificates, "appIds": app_ids }),
+                json!({ "type": "accountResources", "certificates": certificates, "appIds": app_ids, "teamId": team.team_id }),
             );
         }
     }

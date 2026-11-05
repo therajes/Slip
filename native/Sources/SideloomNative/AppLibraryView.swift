@@ -102,6 +102,10 @@ struct AppLibraryView: View {
                     }
                     Spacer()
                     if model.isRunningInstallQueue {
+                        Button(model.pauseQueueAfterCurrent ? "Continue Queue" : "Pause After This App") {
+                            model.pauseQueueAfterCurrent.toggle()
+                        }
+                        Button("Cancel This App") { model.cancelCurrentQueueApp() }
                         Button("Stop Queue") { model.stopInstallQueue() }
                     } else {
                         Button { appearance.selectionFeedback(); model.startInstallQueue() } label: {

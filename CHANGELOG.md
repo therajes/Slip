@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.6.0 — 2026-11-05
+
+- Read expiry from signed provisioning profiles; label legacy and fallback deadlines as estimates.
+- Plan new and reused App IDs across the selected account's ready queue and kept extensions.
+- Resume supported downloads after validating server identity; reject changed files.
+- Add pause-after-current, cancel-current and stop-queue controls with reviewed retries.
+- Check due renewals after wake and offer optional quiet notifications.
+- Add actionable Activity diagnostics and a previewable redacted support report.
+- Refresh layered icon materials, screenshots, release documentation and the versioned DMG.
+- Avoid reverse DNS during local download-test server startup, fixing CI fixture timeouts.
+
 ## 2.5.0 - 2026-11-03
 
 ### Changed

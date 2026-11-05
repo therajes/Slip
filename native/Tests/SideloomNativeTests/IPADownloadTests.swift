@@ -19,6 +19,12 @@ final class IPADownloadTests: XCTestCase, @unchecked Sendable {
         counts={}; lock=threading.Lock()
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self,*args):pass
+            def do_HEAD(self):
+                self.send_response(200)
+                self.send_header('ETag', '"changed"' if pathlib.Path(sys.argv[1]+'.changed').exists() else '"fixture"')
+                self.send_header('Content-Length','262148')
+                self.send_header('Accept-Ranges','bytes')
+                self.end_headers()
             def do_GET(self):
                 with lock:
                     counts[self.path]=counts.get(self.path,0)+1
@@ -31,16 +37,30 @@ final class IPADownloadTests: XCTestCase, @unchecked Sendable {
                 elif self.path=='/redirect':
                     self.send_response(302);self.send_header('Location','/ok');self.end_headers();return
                 else:body=b'PK\x03\x04'+b'x'*262144;status=200
+                total=len(body)
+                offset=int(self.headers.get('Range','bytes=0-').split('=')[1].split('-')[0]) if self.path=='/resumable' else 0
+                if offset: body=body[offset:];status=206
                 self.send_response(status)
+                if self.path=='/resumable':
+                    self.send_header('ETag','"fixture"')
+                    self.send_header('Accept-Ranges','bytes')
+                    if offset:self.send_header('Content-Range',f'bytes {offset}-{total-1}/{total}')
                 self.send_header('Content-Length',str(len(body)))
                 if status==503:self.send_header('Retry-After','1')
                 self.end_headers()
                 try:
                     for start in range(0,len(body),4096):
                         self.wfile.write(body[start:start+4096]);self.wfile.flush()
-                        if self.path=='/slow':time.sleep(.05)
+                        if self.path in ('/slow','/resumable'):time.sleep(.05)
                 except (BrokenPipeError,ConnectionResetError):pass
-        server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        # Binding a numeric loopback address needs no reverse DNS lookup.
+        class LocalHTTPServer(http.server.ThreadingHTTPServer):
+            def server_bind(self):
+                self.socket.bind(self.server_address)
+                self.server_address = self.socket.getsockname()
+                self.server_name = self.server_address[0]
+                self.server_port = self.server_address[1]
+        server=LocalHTTPServer(('127.0.0.1',0),Handler)
         pathlib.Path(sys.argv[1]).write_text(str(server.server_port))
         server.serve_forever()
         """#
@@ -146,4 +166,35 @@ final class IPADownloadTests: XCTestCase, @unchecked Sendable {
         XCTAssertNil(IPADownloadPolicy.retryDelay(URLError(.cancelled), attempt: 1))
         XCTAssertNil(IPADownloadPolicy.retryDelay(URLError(.timedOut), attempt: 3))
     }
+    private func pausedTransfer() async throws -> (URL, URL, PausedIPADownload) {
+        let (base, destination) = try await fixture()
+        let control = IPADownloadControl(), recorder = DownloadProgressRecorder()
+        let url = base.appending(path: "resumable")
+        let task = Task { try await IPAURLDownloadService().download(url, to: destination, control: control, progress: recorder.append) }
+        for _ in 0..<300 {
+            if recorder.snapshots.contains(where: { $0.canPause && $0.received > 0 }) { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        control.pause()
+        do { _ = try await task.value; throw SideloomError.message("Transfer did not pause") }
+        catch let paused as PausedIPADownload { return (url, destination, paused) }
+    }
+
+    func testPauseAndResumePreservesExactArchiveBytes() async throws {
+        let (url, destination, paused) = try await pausedTransfer()
+        let file = try await IPAURLDownloadService().download(url, to: destination, resume: paused) { _ in }
+        XCTAssertEqual(try Data(contentsOf: file), Data([0x50, 0x4b, 3, 4]) + Data(repeating: 120, count: 262144))
+    }
+
+    func testResumeRejectsChangedRemoteFile() async throws {
+        let (url, destination, paused) = try await pausedTransfer()
+        let changed = destination.deletingLastPathComponent().appending(path: "port.changed")
+        try Data().write(to: changed)
+        do {
+            _ = try await IPAURLDownloadService().download(url, to: destination, resume: paused) { _ in }
+            XCTFail("Changed ETag must reject resume")
+        } catch { XCTAssertTrue(error.localizedDescription.contains("remote file changed")) }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+
 }

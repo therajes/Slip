@@ -49,6 +49,8 @@ final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
     private let workerMode: Bool
     private var mainWindow: SlipWindow?
     private var waitingToTerminate = false
+    private var wakeObserver: NSObjectProtocol?
+    private var recoveryRunning = false
 
     override init() {
         let isWorker = CommandLine.arguments.contains("--refresh-due")
@@ -67,6 +69,16 @@ final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
         } else {
             NSApp.setActivationPolicy(.regular)
             showMainWindow()
+            wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, !self.recoveryRunning else { return }
+                    self.recoveryRunning = true
+                    defer { self.recoveryRunning = false }
+                    _ = await AutoRefreshWorker.runDue()
+                    self.model.reloadManagedInstallations()
+                    await self.model.refreshDevices()
+                }
+            }
         }
     }
 
@@ -151,6 +163,7 @@ final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
         model.deviceMonitor?.stop()
     }
 

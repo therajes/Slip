@@ -10,6 +10,8 @@ struct ManagedInstallation: Codable, Hashable, Identifiable {
     var deviceName: String
     var options: IpaInstallOptions
     var installedAt: Date
+    var profileExpiryConfirmed: Bool? = nil
+    var expiryIsEstimated: Bool { profileExpiryConfirmed != true }
     var expiresAt: Date
     var nextRefreshAt: Date
     var lastAttemptAt: Date?
@@ -64,7 +66,8 @@ enum AutoRefreshStore {
     static func recordSuccessfulInstall(
         ipa: IpaInfo,
         request: InstallRequest,
-        enabled: Bool
+        enabled: Bool,
+        profileExpiresAt: Double? = nil
     ) throws -> ManagedInstallation {
         let now = Date()
         let effectiveBundleID = request.options.bundleId ?? ipa.bundleId
@@ -82,8 +85,9 @@ enum AutoRefreshStore {
             deviceName: request.device.name,
             options: request.options,
             installedAt: now,
-            expiresAt: now.addingTimeInterval(7 * 24 * 60 * 60),
-            nextRefreshAt: now.addingTimeInterval(6 * 24 * 60 * 60),
+            profileExpiryConfirmed: profileExpiresAt != nil,
+            expiresAt: profileExpiresAt.map { Date(timeIntervalSince1970: $0) } ?? now.addingTimeInterval(7 * 24 * 60 * 60),
+            nextRefreshAt: profileExpiresAt.map { Date(timeIntervalSince1970: $0).addingTimeInterval(-24 * 60 * 60) } ?? now.addingTimeInterval(6 * 24 * 60 * 60),
             lastAttemptAt: now,
             enabled: enabled,
             status: enabled ? "Scheduled" : "Paused",
@@ -249,11 +253,14 @@ enum AutoRefreshWorker {
                 )
                 let outcome = try await performInstall(request)
                 switch outcome {
-                case .installed:
+                case .installed, .installedWithExpiry:
                     let refreshedAt = Date()
                     installations[index].installedAt = refreshedAt
-                    installations[index].expiresAt = refreshedAt.addingTimeInterval(7 * 24 * 60 * 60)
-                    installations[index].nextRefreshAt = refreshedAt.addingTimeInterval(6 * 24 * 60 * 60)
+                    let expiry: Date?
+                    if case .installedWithExpiry(let date) = outcome { expiry = date } else { expiry = nil }
+                    installations[index].profileExpiryConfirmed = expiry != nil
+                    installations[index].expiresAt = expiry ?? refreshedAt.addingTimeInterval(7 * 24 * 60 * 60)
+                    installations[index].nextRefreshAt = installations[index].expiresAt.addingTimeInterval(-24 * 60 * 60)
                     installations[index].status = "Scheduled"
                     installations[index].lastError = nil
                     succeeded += 1
@@ -290,6 +297,7 @@ enum AutoRefreshWorker {
 
     enum InstallOutcome: Equatable {
         case installed
+        case installedWithExpiry(Date)
         case attention(String)
         case failed(String)
     }
@@ -301,7 +309,7 @@ enum AutoRefreshWorker {
         for try await event in stream {
             switch event.type {
             case "completed":
-                outcome = .installed
+                outcome = event.profileExpiresAt.map { .installedWithExpiry(Date(timeIntervalSince1970: $0)) } ?? .installed
             case "twoFactorRequired":
                 try? core.submitTwoFactor(nil)
                 outcome = .attention("Apple requested a verification code. Open Slip and refresh this app manually.")
@@ -367,6 +375,7 @@ enum AutoRefreshWorker {
     }
 
     private static func postNotification(title: String, message: String) {
+        guard UserDefaults.standard.bool(forKey: "renewalNotificationsEnabled") else { return }
         let escape: (String) -> String = {
             $0.replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"", with: "\\\"")

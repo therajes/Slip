@@ -53,3 +53,10 @@ and in the central cutout, with opaque tile interiors.
 
 Native format references: [Icon Composer](https://developer.apple.com/icon-composer/)
 and [Apple's icon guidance](https://developer.apple.com/design/human-interface-guidelines/app-icons).
+
+## 2.6 material refresh
+
+The 2.6 Icon Composer document keeps the approved transfer symbol and optical size.
+Its light background has a clearer platinum gradient, the dark upper surface is
+slightly brighter, and the neutral shadow is reduced to 20%. Xcode compiles fresh
+layered renditions and the fallback ICNS into the app and DMG.

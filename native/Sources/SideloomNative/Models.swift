@@ -129,6 +129,8 @@ struct CoreEvent: Codable {
     let email: String?
     let accountName: String?
     let details: TwoFactorDetails?
+    let teamId: String?
+    let profileExpiresAt: Double?
     let hostIdentity: HostIdentityInfo?
 }
 

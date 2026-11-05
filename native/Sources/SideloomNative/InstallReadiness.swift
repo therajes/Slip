@@ -159,7 +159,7 @@ extension AppModel {
             result.append(.init(id: "large-wifi", title: "USB will be faster for this IPA", detail: "The selected network transfer is " + Int64(ipa.sizeBytes).formatted(.byteCount(style: .file)) + ".", symbol: "cable.connector", level: .warning))
         }
         if effectiveAppIDCost > 1 {
-            result.append(.init(id: "app-ids", title: "This setup uses " + String(effectiveAppIDCost) + " App IDs", detail: "Remove optional extensions to conserve a free Apple Account’s quota.", symbol: "square.stack.3d.up", level: .warning))
+            result.append(.init(id: "app-ids", title: appIDPlan.summary, detail: "Review the App ID planner. Remove optional extensions to conserve quota; existing registrations may be reusable.", symbol: "square.stack.3d.up", level: .warning))
         }
         if let refreshingName = currentlyRefreshingAppName {
             result.append(.init(

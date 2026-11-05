@@ -7,10 +7,12 @@ from mac_alias import Alias
 
 
 def configure(volume):
-    background = volume / '.background/background.png'
+    # Normalize /var to /private/var before mac_alias computes volume-relative paths.
+    background = volume.resolve() / '.background/background.png'
     with DSStore.open(str(volume / '.DS_Store'), 'w+') as store:
         store['.']['vSrn'] = ('long', 1)
         store['.']['vstl'] = ('type', b'icnv')
+        store['.']['icvl'] = ('type', b'icnv')
         store['.']['bwsp'] = {
             'WindowBounds': '{{140, 120}, {760, 480}}',
             'ShowToolbar': False,
@@ -24,6 +26,9 @@ def configure(volume):
         store['.']['icvp'] = {
             'viewOptionsVersion': 1,
             'backgroundType': 2,
+            'backgroundColorRed': 1.0,
+            'backgroundColorGreen': 1.0,
+            'backgroundColorBlue': 1.0,
             'backgroundImageAlias': Alias.for_file(str(background)).to_bytes(),
             'iconSize': 112.0,
             'textSize': 14.0,
@@ -49,13 +54,13 @@ def verify(volume):
     if not (volume / 'Applications').is_symlink() or os.readlink(volume / 'Applications') != '/Applications':
         raise ValueError('The disk image is missing its Applications shortcut')
     with DSStore.open(str(volume / '.DS_Store'), 'r') as store:
-        if store['.']['vstl'] != (b'type', b'icnv'):
+        if store['.']['vstl'] != (b'type', b'icnv') or store['.']['icvl'] != (b'type', b'icnv'):
             raise ValueError('The disk image must open in icon view')
         options = store['.']['icvp']
         if options['backgroundType'] != 2 or not options['backgroundImageAlias']:
             raise ValueError('The disk image has no Finder background reference')
         alias = Alias.from_bytes(options['backgroundImageAlias'])
-        if alias.target.filename != 'background.png':
+        if alias.target.filename != 'background.png' or alias.target.posix_path not in ('/.background/background.png', b'/.background/background.png'):
             raise ValueError('The disk image background reference is invalid')
         if store['Slip.app']['Iloc'] != (190, 240) or store['Applications']['Iloc'] != (570, 240):
             raise ValueError('The drag-to-Applications layout was not saved')

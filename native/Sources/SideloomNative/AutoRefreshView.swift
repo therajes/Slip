@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct AutoRefreshView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var appearance: AppearanceController
+    @AppStorage("renewalNotificationsEnabled") private var renewalNotificationsEnabled = false
     @State private var replacementID: String?
     @State private var showingSourcePicker = false
 
@@ -61,7 +62,7 @@ struct AutoRefreshView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(AutoRefreshScheduler.isInstalled ? "Background renewal is ready" : "Open Slip from Applications to enable renewal")
                             .font(.system(size: 14, weight: .semibold))
-                        Text("Checks every 15 minutes. Renews on day six.")
+                        Text("Checks every 15 minutes and after wake. Renews one day before expiry.")
                             .font(.caption).foregroundStyle(Chrome.secondaryText)
                     }
                     Spacer(minLength: 12)
@@ -71,6 +72,8 @@ struct AutoRefreshView: View {
                     } label: { Label("Refresh all", systemImage: "arrow.clockwise") }
                     .disabled(!model.managedInstallations.contains(where: \.enabled) || !model.refreshingManagedIDs.isEmpty)
                 }
+                Toggle("Quiet renewal notifications", isOn: $renewalNotificationsEnabled)
+                    .font(.callout)
                 DisclosureGroup {
                     Text("Keep your Mac awake and your saved IPA in place. Slip prefers Wi-Fi and can use USB. Both devices need the same router or another device’s hotspot.")
                         .font(.callout).foregroundStyle(Chrome.secondaryText)
@@ -97,7 +100,7 @@ struct AutoRefreshView: View {
                         Text(item.status).foregroundStyle(statusColor(item))
                         Text("·").foregroundStyle(Chrome.secondaryText)
                         TimelineView(.periodic(from: .now, by: 60)) { context in
-                            Text(RenewalHealth.label(expiration: item.expiresAt, now: context.date))
+                            Text((item.expiryIsEstimated ? "Estimated · " : "") + RenewalHealth.label(expiration: item.expiresAt, now: context.date))
                                 .foregroundStyle(expiryColor(item, now: context.date))
                         }
                     }.font(.caption)
@@ -163,7 +166,7 @@ struct AutoRefreshView: View {
             DisclosureGroup("Details") {
                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 9) {
                     GridRow { Text("App ID").foregroundStyle(Chrome.secondaryText); Text(item.bundleId).textSelection(.enabled) }
-                    GridRow { Text("Expires").foregroundStyle(Chrome.secondaryText); Text(item.expiresAt.formatted(date: .abbreviated, time: .shortened)) }
+                    GridRow { Text(item.expiryIsEstimated ? "Estimated expiry" : "Profile expiry").foregroundStyle(Chrome.secondaryText); Text(item.expiresAt.formatted(date: .abbreviated, time: .shortened)) }
                     GridRow { Text("iPhone").foregroundStyle(Chrome.secondaryText); Text(item.deviceName) }
                     GridRow {
                         Text("IPA").foregroundStyle(Chrome.secondaryText)

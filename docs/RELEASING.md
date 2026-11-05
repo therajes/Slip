@@ -18,11 +18,11 @@ A failed test or packaging check stops the build. New pushes cancel superseded b
 
 Update `native/Info.plist`, `package.json`, `src-tauri/Cargo.toml`, the root `sideloom` entry in `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json` to the same version. Add its changelog entry and `docs/RELEASE_NOTES_<version>.md`, then commit and push to `main`.
 
-After the branch build passes, tag that tested commit. For Slip 2.5.0:
+After the branch build passes, tag that tested commit. For Slip 2.6.0:
 
 ```sh
-git tag -a v2.5.0 -m "Slip 2.5.0"
-git push origin v2.5.0
+git tag -a v2.6.0 -m "Slip 2.6.0"
+git push origin v2.6.0
 ```
 
 The tag starts a complete build. Once every check passes, a separate job downloads that run's artifact, verifies its checksum, and creates the GitHub Release with the DMG, checksum and version's release notes. A mismatched version tag is rejected. Existing tags and releases are not overwritten.
@@ -36,3 +36,11 @@ GitHub builds use ad-hoc signing because no Developer ID or notarization credent
 CI's signing identity differs from a locally development-signed installation. Replacing that app may require renewed Keychain access approval. Saved library and renewal files are not bundled into release artifacts.
 
 Developer ID signing and notarization require an Apple Developer Program identity and corresponding GitHub secrets before they can be automated. Do not commit certificates, passwords, provisioning profiles or account data.
+
+## Installer view metadata
+
+Finder's icon view uses both `icvl` and `icvp`, following the
+[dmgbuild implementation](https://github.com/dmgbuild/dmgbuild/blob/main/src/dmgbuild/core.py).
+The background alias is generated from a canonical path so `/var` symlinks do not
+create a reference outside the volume. Packaging verifies the volume-relative
+background path as well as both icon-view records and the icon positions.

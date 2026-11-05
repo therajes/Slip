@@ -48,6 +48,7 @@ struct InstallView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         statusRibbon
+                        appIDPlannerCard
                         customizationCard
                             .disabled(model.isInstalling || model.isRunningInstallQueue || model.isImportingLibrary || model.isRestoringWorkspace)
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -390,6 +391,51 @@ struct InstallView: View {
         }
     }
 
+    private var appIDPlannerCard: some View {
+        let plan = model.appIDPlan
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(plan.summary).font(.callout.weight(.semibold))
+                    Spacer()
+                    Button("Check with Apple") { Task { await model.manageAccount() } }
+                        .disabled(model.workspaceIsBusy || model.selectedAccount.isEmpty)
+                }
+                Text("Includes this workspace and ready queue entries for the selected account; shared IDs count once.")
+                    .font(.caption).foregroundStyle(Chrome.secondaryText)
+                if let checkedAt = plan.checkedAt {
+                    Text("Apple registrations checked \(checkedAt.formatted(date: .abbreviated, time: .shortened)). Counts are a plan, not a reservation.")
+                        .font(.caption).foregroundStyle(Chrome.secondaryText)
+                } else {
+                    Text("Estimate: account registrations have not been checked. All IDs are counted as new until you check with Apple.")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                if let remaining = plan.remaining {
+                    Text("Apple last reported \(remaining) available. \(plan.newCount > remaining ? "Remove optional extensions or wait for quota to renew." : "Availability can change before signing.")")
+                        .font(.caption).foregroundStyle(plan.newCount > remaining ? Color.orange : Chrome.secondaryText)
+                } else {
+                    Text("Apple has not confirmed available quota; the number of registered IDs does not prove remaining capacity.")
+                        .font(.caption).foregroundStyle(Chrome.secondaryText)
+                }
+                DisclosureGroup("App IDs and optional extensions") {
+                    ForEach(plan.entries) { entry in
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.name + (entry.optional ? " · Optional extension" : ""))
+                                Text(entry.bundleID).font(.caption.monospaced()).foregroundStyle(Chrome.secondaryText)
+                            }
+                            Spacer()
+                            Text(entry.reused ? "Reuse" : "New ID").foregroundStyle(entry.reused ? Color.green : Color.orange)
+                        }.font(.caption).padding(.vertical, 3)
+                    }
+                }
+                if let error = model.resourcesError {
+                    Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                }
+            }
+        } label: { Label("App ID planner", systemImage: "square.stack.3d.up") }
+    }
+
     private var readinessCard: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 8) {
@@ -469,6 +515,16 @@ struct InstallView: View {
 
             if model.isDownloading {
                 DownloadProgressContent(progress: model.operationProgress, inspecting: model.isInspecting, motion: motion) { model.cancelDownload() }
+                if model.downloadProgress?.canPause == true && !model.isInspecting {
+                    Button("Pause Download") { model.pauseDownload() }
+                }
+            } else if model.pausedDownload != nil {
+                HStack {
+                    Label("Download paused · partial file preserved", systemImage: "pause.circle")
+                    Spacer()
+                    Button("Resume Download") { Task { await model.resumeDownload() } }
+                    Button("Cancel Download", role: .destructive) { model.cancelDownload() }
+                }
             } else if model.isInstalling {
                 if model.showTwoFactor {
                     HStack(spacing: 12) {

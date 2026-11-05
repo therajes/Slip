@@ -1,44 +1,37 @@
-<div align="center">
-  <img src="../design/slip-icon.png" width="96" alt="Slip app icon">
-  <h1>Slip, at a glance.</h1>
-  <p>A native Mac workspace for your IPAs and personal iPhone.</p>
-  <p><a href="../README.md">Overview</a> · <a href="RELEASE_NOTES_2.5.0.md">What’s new in 2.5</a> · <a href="../design/media/slip-2.5-demo.mp4">Watch the short demo</a></p>
-</div>
+# Slip screenshots
 
-Slip 2.5 retains the Liquid Glass interface and icon while improving autosaving, artwork loading, progress updates and device correctness. The library, Auto Refresh and Settings below are captured from the native 2.5 app. Device inventory and disk-image images are retained from earlier releases.
+[Download Slip](https://github.com/therajes/Slip/releases/latest) · [What's new in 2.6](RELEASE_NOTES_2.6.0.md) · [Overview](../README.md)
 
-## A library that remembers
+These screenshots were captured from the installed native Slip 2.6.0 app. No Apple sign-in, signing or renewal was performed for the screenshots.
 
-![Slip 2.5 App Library with saved IPA workspaces](../design/screenshots/2.5/slip-library.png)
+## Renewal deadlines and wake recovery
 
-Find saved apps, reopen a workspace and pick up your customization choices. IPAs stay in their original locations. Drop an IPA or import from Finder to inspect its identity, artwork, compatibility and extensions before signing.
+![Slip 2.6 Auto Refresh](../design/screenshots/2.6/slip-autorefresh.png)
 
-**[Watch the 13-second native-app tour](../design/media/slip-2.5-demo.mp4)** — search the library, open floating navigation, view Auto Refresh and visit Settings. This is a brief navigation demo; pauses between computer-use actions are trimmed. It does not perform sign-in, installation or renewal.
+Legacy deadlines are labeled Estimated. Quiet notifications are optional. Existing recipes and renewal dates are preserved.
 
-## Keep apps ready
+## App Library
 
-![Slip 2.5 Auto Refresh workspace](../design/screenshots/2.5/slip-autorefresh.png)
+![Slip 2.6 App Library](../design/screenshots/2.6/slip-library.png)
 
-Refresh Guard keeps saved renewal recipes visible with their status and schedule. Automatic renewal requires an awake Mac, the source IPA, opted-in Keychain credentials and a reachable paired iPhone. Apple’s seven-day free provisioning limit still applies.
+Saved IPA workspaces retain their choices and original source locations.
 
-## See what’s on your iPhone
+## Activity and support
 
-![Slip iPhone app inventory](../design/screenshots/slip-iphoneapps-dark.png)
+![Slip 2.6 Activity](../design/screenshots/2.6/slip-activity.png)
 
-Browse device apps, copy bundle IDs and manage eligible saved apps. In 2.5, inventory results, selections and uninstall confirmations are scoped to the physical iPhone, so late results from another device are discarded.
+![Slip 2.6 support-report preview](../design/screenshots/2.6/slip-support-report.png)
 
-## Make the workspace yours
+Reports are previewed before copying and always apply redaction independently of Activity's privacy toggle.
 
-![Slip 2.5 appearance and workspace settings](../design/screenshots/2.5/slip-settings.png)
+## Installer
 
-Choose a theme, adjust backdrop transparency and tune motion or performance preferences. Native accessibility settings retain solid surfaces when needed.
+![Slip 2.6 installer](../design/screenshots/2.6/slip-dmg.png)
 
-## Start with a drag
+## Earlier walkthrough
 
-![Slip disk image with drag-to-Applications installation](../design/screenshots/slip-dmg.png)
+[The 2.5 native navigation demo](../design/media/slip-2.5-demo.mp4) shows the previous release's library search, floating navigation, Auto Refresh and Settings. It does not demonstrate signing or installation.
 
-Download a release disk image and drag Slip to Applications. Connect and trust your iPhone over USB for the first setup, then follow the [installation steps](../README.md#get-started).
+![iPhone inventory, earlier release](../design/screenshots/slip-iphoneapps-dark.png)
 
----
-
-[Back to the project](../README.md) · [Build the native app](../native/README.md) · [Feature matrix and limits](FEATURE_MATRIX.md)
+The inventory image above is retained from an earlier release.
