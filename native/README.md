@@ -1,8 +1,8 @@
 # Slip Native
 
-Slip 2.6 adds profile deadlines, account-aware App ID planning, wake recovery,
-validated download pause/resume, queue controls and redacted diagnostics.
-See [the 2.6 release notes](../docs/RELEASE_NOTES_2.6.0.md).
+Slip 2.7 adds app update feeds, cached library artwork, version history, presets,
+managed IPA storage and SMS-only Apple Account sign-in fixes.
+See [the 2.7 release notes](../docs/RELEASE_NOTES_2.7.0.md).
 
 Slip Native is the SwiftUI macOS application. It requires macOS 26 or newer and uses Apple's native Liquid Glass APIs. It bundles a separate Rust executable for Apple signing and iPhone communication.
 
@@ -34,7 +34,7 @@ The native link step explicitly records the active macOS SDK from `xcrun` in
 `LC_BUILD_VERSION`, independently of the macOS 26 deployment target. This avoids
 SwiftPM's Xcode build path tagging the executable with SDK 15 when using Xcode 27.
 
-Run `./create-dmg.sh build/Slip.app dist/Slip-2.6.0.dmg` to create the visual drag-to-Applications installer.
+Run `./create-dmg.sh build/Slip.app dist/Slip-2.7.0.dmg` to create the visual drag-to-Applications installer.
 
 Packaging requires Python 3.10 or newer. The script installs its pinned, hash-checked Finder metadata tools into an isolated environment under `native/build/dmg-tools`. It writes the background and icon layout directly, then mounts the compressed image read-only to verify its contents, layout and app signature. Finder automation is not required.
 

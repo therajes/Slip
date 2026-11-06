@@ -10,9 +10,9 @@ actor IPAPreviewCache {
             .appending(path: "app.sideloom.native/IPAIcons-v2", directoryHint: .isDirectory)
     }
 
-    func location(for info: IpaInfo) throws -> (url: URL, exists: Bool) {
+    func location(for info: IpaInfo, sourceStamp: IPAFileStamp? = nil) throws -> (url: URL, exists: Bool) {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let stamp = IPAFileStamp.read(info.path)
+        let stamp = sourceStamp ?? IPAFileStamp.read(info.path)
         let identity = "\(info.path)|\(info.sizeBytes)|\(stamp?.modifiedAt.timeIntervalSince1970 ?? 0)|\(info.version)|\(info.buildVersion)"
         let key = SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
         let url = directory.appending(path: key + ".png")

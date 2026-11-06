@@ -45,7 +45,7 @@ body:
   attributes:
     label: Slip version
     description: What version of Slip are you experiencing this problem with?
-    placeholder: v2.6.0
+    placeholder: v2.7.0
   validations:
     required: true
 - type: dropdown

@@ -100,6 +100,7 @@ final class AppModel: ObservableObject {
     var activeLibraryID: UUID?
     var activeSourceStamp: IPAFileStamp?
     let libraryRepository: AppLibraryRepository?
+    let libraryManagementStore: LibraryManagementStore?
     var workspaceSaveTask: Task<Void, Never>?
     var libraryWriteTask: Task<Void, Never>?
     var libraryDiskWriter: LibraryDiskWriter?
@@ -125,8 +126,8 @@ final class AppModel: ObservableObject {
     @Published var pausedDownload: PausedIPADownload?
     @Published var pauseQueueAfterCurrent = false
     private let downloadControl = IPADownloadControl()
-    private var downloadTask: Task<URL, Error>?
-    private var downloadGeneration: UUID?
+    var downloadTask: Task<URL, Error>?
+    var downloadGeneration: UUID?
     @Published var authenticationMode = UserDefaults.standard.string(forKey: "authenticationMode") ?? "local" {
         didSet { UserDefaults.standard.set(authenticationMode, forKey: "authenticationMode") }
     }
@@ -150,7 +151,11 @@ final class AppModel: ObservableObject {
     init(startupTasks: Bool = true, core: CoreClient = CoreClient(), loadSavedState: Bool = true,
          libraryRepository: AppLibraryRepository? = nil) {
         self.core = core
-        self.libraryRepository = libraryRepository ?? (loadSavedState && startupTasks ? .standard : nil)
+        let repository = libraryRepository ?? (loadSavedState && startupTasks ? .standard : nil)
+        self.libraryRepository = repository
+        self.libraryManagementStore = repository.map {
+            $0.fileURL == AppLibraryRepository.standard.fileURL ? .shared : LibraryManagementStore(root: $0.fileURL.deletingLastPathComponent().deletingLastPathComponent())
+        }
         if loadSavedState { reloadAccounts(); reloadManagedInstallations() }
         if let repository = self.libraryRepository {
             do { library = try repository.load() }
@@ -556,7 +561,7 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func loadIPA(_ url: URL, downloadID: UUID? = nil, expectedBundleID: String? = nil, queueID: UUID? = nil) async -> Bool {
+    func loadIPA(_ url: URL, downloadID: UUID? = nil, expectedBundleID: String? = nil, queueID: UUID? = nil, historyWorkspaceID: UUID? = nil) async -> Bool {
         guard !isInstalling, !isExporting, !isDownloading || downloadID == downloadGeneration,
               !isRunningInstallQueue || (queueID != nil && queueID == activeQueueID) else {
             errorMessage = "Wait for the current IPA operation or cancel its download first."
@@ -588,7 +593,10 @@ final class AppModel: ObservableObject {
             // previous IPA, icon and all of the user's customization choices.
             discardIPAPreview()
             ipa = info
-            activeLibraryID = library.apps.first(where: { $0.ipa.path == info.path })?.id ?? UUID()
+            activeLibraryID = historyWorkspaceID ?? library.apps.first(where: { $0.ipa.path == info.path })?.id ?? UUID()
+            if let id = activeLibraryID, let store = libraryManagementStore {
+                Task { try? await store.record(workspaceID: id, ipa: info, installed: false) }
+            }
             activeSourceStamp = IPAFileStamp.read(info.path)
             reviewingQueueID = nil
             resetCustomizations()
@@ -1076,6 +1084,14 @@ final class AppModel: ObservableObject {
                     verificationCode = ""
                     overallProgress = 1
                     currentStage = "Installed"
+                    if let store = libraryManagementStore {
+                        let effectiveID = request.options.bundleId ?? ipa.bundleId
+                        for saved in library.apps where saved.ipa.path == request.options.appPath
+                            && saved.deviceUDID == request.device.udid
+                            && (saved.options.bundleId ?? saved.ipa.bundleId) == effectiveID {
+                            Task { try? await store.record(workspaceID: saved.id, ipa: ipa, installed: true) }
+                        }
+                    }
                     if let installStartedAt {
                         lastInstallDuration = Date().timeIntervalSince(installStartedAt)
                     }

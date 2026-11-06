@@ -6,6 +6,8 @@ struct AppLibraryView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var appearance: AppearanceController
     @State private var search = ""
+    @State private var updatingWorkspace: SavedAppWorkspace?
+    @State private var managingWorkspace: SavedAppWorkspace?
     @State private var sourceAvailability: [String: Bool] = [:]
 
     private var pending: [InstallQueueItem] { model.library.queue.filter { $0.status != .installed } }
@@ -51,9 +53,15 @@ struct AppLibraryView: View {
                     }
                     .padding(4)
                 } label: { Label("Saved apps · \(model.library.apps.count)", systemImage: "square.stack") }
-                Text("IPAs stay in their original locations. Removing a library entry keeps its file and Auto Refresh schedule.")
+                Text("Use Updates to follow a release source, or Manage App for presets, history and optional managed storage. Removing a library entry keeps its IPA and Auto Refresh schedule.")
                     .font(.caption).foregroundStyle(Chrome.secondaryText)
             }
+        }
+        .sheet(item: $updatingWorkspace) { app in
+            AppUpdatesView(workspace: app).environmentObject(model)
+        }
+        .sheet(item: $managingWorkspace) { app in
+            LibraryManagementView(workspace: app).environmentObject(model)
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard !model.workspaceIsBusy, urls.contains(where: { $0.isFileURL && $0.pathExtension.lowercased() == "ipa" }) else { return false }
@@ -158,9 +166,9 @@ struct AppLibraryView: View {
     private func libraryRow(_ app: SavedAppWorkspace) -> some View {
         let sourceExists = sourceAvailability[app.ipa.path] ?? true
         return HStack(spacing: 14) {
-            Image(systemName: sourceExists ? "app.badge" : "doc.badge.ellipsis")
-                .font(.system(size: 24, weight: .light)).frame(width: 44, height: 44)
-                .background(Chrome.overlay(0.05), in: RoundedRectangle(cornerRadius: 12))
+            LibraryArtwork(workspace: app)
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 4) {
                 Text(app.name).font(.system(size: 14, weight: .semibold))
                 Text("\(app.ipa.version) · \(app.ipa.bundleId)").font(.caption).foregroundStyle(Chrome.secondaryText)
@@ -178,7 +186,10 @@ struct AppLibraryView: View {
             } else {
                 Button("Locate IPA…") { locateIPA(app.id) }.disabled(model.workspaceIsBusy)
             }
+            Button("Updates…") { updatingWorkspace = app }.disabled(model.workspaceIsBusy)
             Menu {
+                Button("Manage App…") { managingWorkspace = app }
+                Divider()
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.ipa.path)]) }
                     .disabled(!sourceExists)
                 Button("Locate IPA…") { locateIPA(app.id) }

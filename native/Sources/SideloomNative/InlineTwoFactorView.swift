@@ -30,7 +30,9 @@ struct InlineTwoFactorView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 8) {
-                    Button("Send to Trusted Apple Devices") { onChooseMethod(nil) }
+                    if details?.sms != true {
+                        Button("Send to Trusted Apple Devices") { onChooseMethod(nil) }
+                    }
                     ForEach(details?.numbers ?? []) { number in
                         Button("Send SMS to \(number.displayNumber)") { onChooseMethod(number.id) }
                     }

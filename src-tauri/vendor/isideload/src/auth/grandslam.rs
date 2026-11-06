@@ -359,6 +359,8 @@ mod http_error_tests {
                     Err(error) => panic!("Fixture listener failed: {error}"),
                 }
             };
+            // Darwin may inherit the listener's nonblocking mode on accepted sockets.
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(2)))
                 .unwrap();

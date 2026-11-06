@@ -2,11 +2,11 @@
 
 Inspect, customize, install, and refresh IPAs in a Liquid Glass workspace.
 
-[![Build Slip](https://github.com/therajes/Slip/actions/workflows/build.yml/badge.svg)](https://github.com/therajes/Slip/actions/workflows/build.yml) ![Slip 2.6](https://img.shields.io/badge/Slip-2.6-64748b?style=flat-square) ![macOS 26 or newer](https://img.shields.io/badge/macOS-26%2B-24292f?style=flat-square&logo=apple&logoColor=white) ![Built with SwiftUI and Rust](https://img.shields.io/badge/SwiftUI_%2B_Rust-native-777?style=flat-square)
+[![Build Slip](https://github.com/therajes/Slip/actions/workflows/build.yml/badge.svg)](https://github.com/therajes/Slip/actions/workflows/build.yml) ![Slip 2.7](https://img.shields.io/badge/Slip-2.7-64748b?style=flat-square) ![macOS 26 or newer](https://img.shields.io/badge/macOS-26%2B-24292f?style=flat-square&logo=apple&logoColor=white) ![Built with SwiftUI and Rust](https://img.shields.io/badge/SwiftUI_%2B_Rust-native-777?style=flat-square)
 
-[**Download Slip**](https://github.com/therajes/Slip/releases/latest) · [What's new in 2.6](docs/RELEASE_NOTES_2.6.0.md) · [Screenshot gallery](docs/GALLERY.md) · [Source](https://github.com/therajes/Slip/tree/main)
+[**Download Slip**](https://github.com/therajes/Slip/releases/latest) · [What's new in 2.7](docs/RELEASE_NOTES_2.7.0.md) · [Screenshot gallery](docs/GALLERY.md) · [Source](https://github.com/therajes/Slip/tree/main)
 
-![Slip 2.6 renewal and recovery workspace](design/screenshots/2.6/slip-autorefresh.png)
+![Slip 2.7 App Library with cached artwork and update controls](design/screenshots/2.7/slip-library.png)
 
 Slip brings SwiftUI and AppKit together with a Rust core for IPA preparation, Apple signing, and direct iPhone transfer. Save workspaces in an App Library, review each install, and keep refresh recipes beside the apps they belong to.
 
@@ -24,16 +24,16 @@ Slip brings SwiftUI and AppKit together with a Rust core for IPA preparation, Ap
 
 Auto Refresh and the disk image are captured from 2.6. Settings and device inventory images are retained from earlier releases. Explore the [gallery](docs/GALLERY.md) or [feature matrix](docs/FEATURE_MATRIX.md) for more.
 
-## New in 2.6
+## New in 2.7
 
-- **Profile deadlines.** Renewal uses expiry read from signed provisioning profiles, including kept extensions. Older or unavailable dates are labeled estimates.
-- **App ID planning.** Review new and reusable IDs for the selected account and ready queue, with the time registrations were checked and optional extension costs.
-- **Download recovery.** Pause supported transfers and resume after checking the server’s file identity. Changed files require a fresh download.
-- **Queue control.** Pause after this app, cancel this app, or stop the queue. Interrupted signing and installation require review before retrying.
-- **Clearer recovery.** Activity explains provider, authentication, pairing and transfer failures, with a redacted support-report preview.
-- **Wake recovery.** Due renewals are checked after waking the Mac. Quiet renewal notifications are optional and off by default.
+- **SMS sign-in fix.** Accounts using phone verification follow Apple's SMS challenge and actual trusted-number IDs. Selecting the same destination preserves its current code.
+- **Updates in App Library.** Follow developer GitHub releases or an HTTPS AltStore source. Review versions, release notes, iOS requirements and available IPA assets.
+- **Saved choices for updates.** Prepare a bundle-validated IPA with existing customizations, then review before signing and installing.
+- **Artwork and history.** Actual cached app icons replace generic rows. Version history distinguishes saved IPAs from confirmed installations.
+- **Reusable presets.** Save preparation choices and apply them to another workspace for review.
+- **Managed storage.** Optionally keep verified IPA copies inside Slip. Inspect usage and preview cleanup that protects workspace, queue and renewal references.
 
-Read the [2.6 release notes](docs/RELEASE_NOTES_2.6.0.md) for validation and limits. The [2.5 performance work](docs/RELEASE_NOTES_2.5.0.md) remains included.
+Open **Updates…** beside an app, or use **More → Manage App…** for presets, history and storage. Read the [2.7 release notes](docs/RELEASE_NOTES_2.7.0.md) for behavior and validation limits. Renewal and recovery improvements from [2.6](docs/RELEASE_NOTES_2.6.0.md) remain included.
 
 ## Get started
 
@@ -58,7 +58,7 @@ The native release uses **Xcode 27.2 / macOS SDK 27.2**, with a **macOS 26** dep
 
 ```sh
 ./native/build.sh
-./native/create-dmg.sh native/build/Slip.app native/dist/Slip-2.6.0.dmg
+./native/create-dmg.sh native/build/Slip.app native/dist/Slip-2.7.0.dmg
 ```
 
 For the native architecture and development details, see [native/README.md](native/README.md).

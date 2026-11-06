@@ -92,7 +92,11 @@ struct AuthenticationFlow {
         guard phase.isActive else { return }
         challenge = details ?? TwoFactorDetails(unknown: false, sms: false, numbers: nil, selectedNumberId: nil, lastError: nil)
         phase = .awaitingCode
-        message = details?.unknown == true ? "Choose where to receive your verification code." : "Enter the code from your trusted Apple device."
+        if details?.unknown == true {
+            message = details?.sms == true ? "Choose the trusted phone number for your SMS code." : "Choose where to receive your verification code."
+        } else {
+            message = details?.sms == true ? "Enter the code sent by SMS to your trusted phone." : "Enter the code from your trusted Apple device."
+        }
         errorMessage = details?.lastError.flatMap { $0.isEmpty ? nil : $0 }
         errorCode = nil
         failedStage = nil
@@ -153,6 +157,8 @@ struct AuthenticationFlow {
 
 enum VerificationCode {
     static func normalized(_ value: String) -> String {
-        String(value.filter { $0.isASCII && $0.isNumber }.prefix(6))
+        let digits = value.filter { $0.isASCII && $0.isNumber }
+        guard digits.count <= 6, value.allSatisfy({ ($0.isASCII && $0.isNumber) || $0.isWhitespace || $0 == "-" }) else { return "" }
+        return String(digits)
     }
 }

@@ -1,37 +1,31 @@
 # Slip screenshots
 
-[Download Slip](https://github.com/therajes/Slip/releases/latest) · [What's new in 2.6](RELEASE_NOTES_2.6.0.md) · [Overview](../README.md)
+[Download Slip](https://github.com/therajes/Slip/releases/latest) · [What's new in 2.7](RELEASE_NOTES_2.7.0.md) · [Overview](../README.md)
 
-These screenshots were captured from the installed native Slip 2.6.0 app. No Apple sign-in, signing or renewal was performed for the screenshots.
-
-## Renewal deadlines and wake recovery
-
-![Slip 2.6 Auto Refresh](../design/screenshots/2.6/slip-autorefresh.png)
-
-Legacy deadlines are labeled Estimated. Quiet notifications are optional. Existing recipes and renewal dates are preserved.
+Captured from the installed native Slip 2.7.0 app. No Apple sign-in, signing or device renewal was performed for these screenshots.
 
 ## App Library
 
-![Slip 2.6 App Library](../design/screenshots/2.6/slip-library.png)
+![Slip 2.7 App Library with actual cached artwork](../design/screenshots/2.7/slip-library.png)
 
-Saved IPA workspaces retain their choices and original source locations.
+## Update sources
 
-## Activity and support
+![Slip 2.7 developer update subscriptions](../design/screenshots/2.7/slip-updates.png)
 
-![Slip 2.6 Activity](../design/screenshots/2.6/slip-activity.png)
+Add a developer's GitHub repository or AltStore source URL. The initial state explicitly distinguishes the saved IPA from an unverified installed version.
 
-![Slip 2.6 support-report preview](../design/screenshots/2.6/slip-support-report.png)
+## Presets, history and storage
 
-Reports are previewed before copying and always apply redaction independently of Activity's privacy toggle.
+![Slip 2.7 app management](../design/screenshots/2.7/slip-management.png)
 
-## Installer
+Existing apps start without invented installation history. Managed storage is optional.
 
-![Slip 2.6 installer](../design/screenshots/2.6/slip-dmg.png)
+## Renewal and installer
 
-## Earlier walkthrough
+![Auto Refresh, captured in 2.6](../design/screenshots/2.6/slip-autorefresh.png)
 
-[The 2.5 native navigation demo](../design/media/slip-2.5-demo.mp4) shows the previous release's library search, floating navigation, Auto Refresh and Settings. It does not demonstrate signing or installation.
+![Slip drag-to-Applications installer, captured in 2.6](../design/screenshots/2.6/slip-dmg.png)
 
-![iPhone inventory, earlier release](../design/screenshots/slip-iphoneapps-dark.png)
+The renewal and installer images above are retained from 2.6; 2.7 preserves that visual style.
 
-The inventory image above is retained from an earlier release.
+[Earlier 2.5 native navigation demo](../design/media/slip-2.5-demo.mp4)

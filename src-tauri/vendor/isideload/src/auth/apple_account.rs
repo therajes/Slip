@@ -46,6 +46,7 @@ pub enum LoginState {
     LoggedIn,
     NeedsDevice2FA,
     NeedsDevice2FAVerification,
+    NeedsSMS2FASelection,
     NeedsSMS2FA(u32),
     NeedsSMS2FAVerification(u32),
     NeedsUnknown2FA,
@@ -322,6 +323,25 @@ impl AppleAccount {
                         TwoFactorCallbackResponse::Abort => {
                             bail!("No 2FA code provided, aborting")
                         }
+                    }
+                }
+                LoginState::NeedsSMS2FASelection => {
+                    let numbers = self.get_trusted_numbers().await?;
+                    self.trusted_phone_numbers = Some(numbers.clone());
+                    if let [number] = numbers.as_slice() {
+                        self.login_state = LoginState::NeedsSMS2FA(number.id);
+                        continue;
+                    }
+                    if numbers.is_empty() { bail!("Apple did not return a trusted phone number for SMS verification"); }
+                    let response = two_factor_callback(TwoFactorCallbackParams {
+                        last_error: self.last_error.clone(), unknown: true, sms: true,
+                        numbers, selected_number_id: None,
+                    }).await?;
+                    self.last_error = None;
+                    match response {
+                        TwoFactorCallbackResponse::SendSms(id) => self.login_state = self.select_number(id)?,
+                        TwoFactorCallbackResponse::Abort => bail!("SMS verification cancelled"),
+                        _ => { self.last_error = Some("Choose a trusted phone number before entering a code.".into()); }
                     }
                 }
                 LoginState::NeedsSMS2FA(id) => {
@@ -810,12 +830,7 @@ impl AppleAccount {
     }
 
     fn select_number(&self, selected_number_id: u32) -> Result<LoginState, Report> {
-        let numbers = self.trusted_phone_numbers.clone().unwrap_or_default();
-        if let Some(number) = numbers.iter().find(|n| n.id == selected_number_id) {
-            debug!("Selected trusted number");
-            return Ok(LoginState::NeedsSMS2FA(number.id));
-        }
-        bail!("Selected trusted number ID not found in trusted numbers");
+        selected_sms_state(&self.login_state, self.trusted_phone_numbers.as_deref().unwrap_or_default(), selected_number_id)
     }
 
     async fn build_2fa_headers(&self, anisette_data: &AnisetteData) -> Result<HeaderMap, Report> {
@@ -982,22 +997,7 @@ impl AppleAccount {
 
         debug!("Login step 2 completed");
 
-        if status.get("hsc").and_then(plist::Value::as_signed_integer) == Some(409) {
-            return Ok(LoginState::NeedsDevice2FA);
-        }
-
-        if let Some(plist::Value::String(s)) = status.get("au") {
-            return Ok(match s.as_str() {
-                "trustedDeviceSecondaryAuth" => LoginState::NeedsDevice2FA,
-                "secondaryAuth" => LoginState::NeedsSMS2FA(
-                    1, /* Just start by trying 1, user can correct after */
-                ),
-                "repair" => LoginState::LoggedIn, // Just means that you don't have 2FA set up
-                unknown => LoginState::NeedsExtraStep(unknown.to_string()),
-            });
-        }
-
-        Ok(LoginState::LoggedIn)
+        Ok(classify_login_challenge(&status))
     }
 
     pub async fn get_app_token(&mut self, app: &str) -> Result<AppToken, Report> {
@@ -1240,5 +1240,51 @@ fn censor_email(email: &str) -> String {
         }
     } else {
         "***".to_string()
+    }
+}
+
+// Apple's explicit authentication channel takes precedence over generic HTTP hints.
+fn classify_login_challenge(status: &Dictionary) -> LoginState {
+    match status.get("au").and_then(plist::Value::as_string) {
+        Some("secondaryAuth") => LoginState::NeedsSMS2FASelection,
+        Some("trustedDeviceSecondaryAuth") => LoginState::NeedsDevice2FA,
+        Some("repair") => LoginState::LoggedIn,
+        Some(other) => LoginState::NeedsExtraStep(other.to_owned()),
+        None if status.get("hsc").and_then(plist::Value::as_signed_integer) == Some(409) => LoginState::NeedsDevice2FA,
+        None => LoginState::LoggedIn,
+    }
+}
+
+fn selected_sms_state(current: &LoginState, numbers: &[TrustedNumber], id: u32) -> Result<LoginState, Report> {
+    if !numbers.iter().any(|number| number.id == id) {
+        bail!("Selected trusted number ID not found in trusted numbers");
+    }
+    if matches!(current, LoginState::NeedsSMS2FAVerification(active) if *active == id) {
+        return Ok(LoginState::NeedsSMS2FAVerification(id));
+    }
+    Ok(LoginState::NeedsSMS2FA(id))
+}
+
+#[cfg(test)]
+mod sms_routing_tests {
+    use super::*;
+    fn number(id: u32) -> TrustedNumber {
+        TrustedNumber { id, number_with_dial_code: "•••42".into(), last_two_digits: "42".into(), push_mode: "sms".into() }
+    }
+    #[test]
+    fn sms_channel_overrides_generic_409() {
+        let mut status = Dictionary::new();
+        status.insert("hsc".into(), 409.into());
+        status.insert("au".into(), "secondaryAuth".into());
+        assert!(matches!(classify_login_challenge(&status), LoginState::NeedsSMS2FASelection));
+        status.remove("au");
+        assert!(matches!(classify_login_challenge(&status), LoginState::NeedsDevice2FA));
+    }
+    #[test]
+    fn selected_sms_destination_does_not_request_a_second_code() {
+        let numbers = [number(7), number(12)];
+        assert!(matches!(selected_sms_state(&LoginState::NeedsSMS2FAVerification(7), &numbers, 7).unwrap(), LoginState::NeedsSMS2FAVerification(7)));
+        assert!(matches!(selected_sms_state(&LoginState::NeedsSMS2FAVerification(7), &numbers, 12).unwrap(), LoginState::NeedsSMS2FA(12)));
+        assert!(selected_sms_state(&LoginState::NeedsSMS2FASelection, &numbers, 1).is_err());
     }
 }

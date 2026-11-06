@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.7.0 — 2026-11-06
+
+- Fix SMS-only Apple authentication routing, real trusted-number selection and duplicate destination requests.
+- Keep SMS prompts and code validation consistent across sign-in and installation.
+- Follow per-app GitHub releases and AltStore source feeds, with version, release notes and compatibility details.
+- Prepare validated updates with saved customizations and explicit installation review.
+- Add cached IPA artwork, saved/installed version history and reusable customization presets.
+- Add optional hash-verified managed IPA storage, usage reporting and protected move-to-Trash cleanup.
+- Update the repository gallery, release documentation and versioned DMG.
+
+
 ## 2.6.0 — 2026-11-05
 
 - Read expiry from signed provisioning profiles; label legacy and fallback deadlines as estimates.

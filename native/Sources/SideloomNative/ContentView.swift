@@ -486,8 +486,10 @@ private struct TwoFactorModalOverlay: View {
                 if details?.unknown == true {
                     Text("Choose where Apple should send your verification code.")
                         .font(.subheadline)
-                    Button("Send to Trusted Apple Devices") { onChooseMethod(nil) }
-                        .disabled(isBusy)
+                    if details?.sms != true {
+                        Button("Send to Trusted Apple Devices") { onChooseMethod(nil) }
+                            .disabled(isBusy)
+                    }
                     ForEach(details?.numbers ?? []) { number in
                         Button("Send SMS to \(number.displayNumber)") { onChooseMethod(number.id) }
                     }
@@ -512,12 +514,8 @@ private struct TwoFactorModalOverlay: View {
                             }
                         }
                         .onChange(of: code) { _, newValue in
-                            let filtered = newValue.filter { $0.isASCII && $0.isNumber }
-                            if filtered.count > 6 {
-                                code = String(filtered.prefix(6))
-                            } else if filtered != newValue {
-                                code = filtered
-                            }
+                            let normalized = VerificationCode.normalized(newValue)
+                            if normalized != newValue { code = normalized }
                         }
 
                     Button("Resend Code") {

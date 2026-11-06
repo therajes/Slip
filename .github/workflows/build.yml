@@ -95,6 +95,9 @@ jobs:
       - name: Run Core Tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --lib
 
+      - name: Run Apple authentication regression tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked -p isideload --lib
+
       - name: Run Native Tests
         run: swift test --package-path native
 

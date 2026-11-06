@@ -117,7 +117,23 @@ final class AuthenticationFlowTests: XCTestCase {
     func testPastedCodeAcceptsSeparatorsButNeverUnicodeDigitsOrMoreThanSixDigits() {
         XCTAssertEqual(VerificationCode.normalized("123 456"), "123456")
         XCTAssertEqual(VerificationCode.normalized("12-34\n56"), "123456")
-        XCTAssertEqual(VerificationCode.normalized("۱۲۳abc1234567"), "123456")
+        XCTAssertEqual(VerificationCode.normalized("۱۲۳abc1234567"), "")
+        XCTAssertEqual(VerificationCode.normalized("1234567"), "")
+        XCTAssertEqual(VerificationCode.normalized("Call 42; code 123456"), "")
+        XCTAssertEqual(VerificationCode.normalized("123"), "123")
         XCTAssertEqual(VerificationCode.normalized("hello"), "")
     }
+    func testSMSChallengeUsesPhoneWordingAndRetainsCodeEntryOnRejection() {
+        var flow = AuthenticationFlow()
+        flow.begin(accountEmail: "fixture@example.invalid")
+        flow.receiveChallenge(TwoFactorDetails(unknown: false, sms: true, numbers: nil, selectedNumberId: 7, lastError: nil))
+        XCTAssertTrue(flow.message.contains("SMS"))
+        XCTAssertTrue(flow.canSubmitCode)
+        XCTAssertTrue(flow.beginChallengeAction(.verifying))
+        flow.receiveChallenge(TwoFactorDetails(unknown: false, sms: true, numbers: nil, selectedNumberId: 7, lastError: "Incorrect code"))
+        XCTAssertTrue(flow.canSubmitCode)
+        XCTAssertEqual(flow.challenge?.selectedNumberId, 7)
+        XCTAssertEqual(flow.errorMessage, "Incorrect code")
+    }
+
 }

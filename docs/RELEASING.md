@@ -18,11 +18,11 @@ A failed test or packaging check stops the build. New pushes cancel superseded b
 
 Update `native/Info.plist`, `package.json`, `src-tauri/Cargo.toml`, the root `sideloom` entry in `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json` to the same version. Add its changelog entry and `docs/RELEASE_NOTES_<version>.md`, then commit and push to `main`.
 
-After the branch build passes, tag that tested commit. For Slip 2.6.0:
+After the branch build passes, tag that tested commit. For Slip 2.7.0:
 
 ```sh
-git tag -a v2.6.0 -m "Slip 2.6.0"
-git push origin v2.6.0
+git tag -a v2.7.0 -m "Slip 2.7.0"
+git push origin v2.7.0
 ```
 
 The tag starts a complete build. Once every check passes, a separate job downloads that run's artifact, verifies its checksum, and creates the GitHub Release with the DMG, checksum and version's release notes. A mismatched version tag is rejected. Existing tags and releases are not overwritten.

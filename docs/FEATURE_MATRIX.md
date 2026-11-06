@@ -1,6 +1,6 @@
 # Slip feature matrix
 
-This matrix is the feature overview for Slip 2.6. Slip is designed only for personal iPhones running stock iOS.
+This matrix is the feature overview for Slip 2.7. Slip is designed only for personal iPhones running stock iOS.
 
 ## Shipped
 
@@ -24,6 +24,9 @@ This matrix is the feature overview for Slip 2.6. Slip is designed only for pers
 | Appearance | Native Liquid Glass, adaptive light/dark glass icon, dimensional symbols, motion control | Automatic icon mode follows the Mac appearance; Reduce Motion always takes priority. |
 | Preflight | Bundle ID, iOS version, encryption, custom icon, typed plist, duplicate/protected-key validation | Blocking issues disable installation and explain the correction before Apple signing starts. |
 | Performance | Raw transfer of unchanged compressed IPA entries | A 196 MB test IPA prepared in 1.15 seconds versus 4.42 seconds in 1.0 on the same Mac. |
+| App management | Per-app GitHub/AltStore update sources, release notes, compatibility, reviewed update preparation | Checks are manual; downloaded bundle IDs must match. Installed versions require matching device inventory. |
+| Library | Cached artwork, version history, reusable customization presets | Historical installs are not invented; presets exclude account/device credentials. |
+| Storage | Optional verified managed IPA copies, usage and protected cleanup | Originals are preserved; cleanup moves only unreferenced managed regular files to Trash. |
 
 ## Deliberately constrained
 
@@ -46,7 +49,7 @@ This matrix is the feature overview for Slip 2.6. Slip is designed only for pers
 
 ## Next engineering priorities
 
-1. App update feeds, version history, customization presets and managed IPA storage (planned for 2.7).
+1. Live SMS-only account validation and end-to-end update installation on a paired iPhone.
 2. Provisioning-profile and entitlement diff preview before signing.
 3. Richer structured device diagnostics beyond the current redacted Activity report.
 4. Live-device validation of renewal after sleep/wake and notification delivery.
