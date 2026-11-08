@@ -26,6 +26,7 @@ struct InstallView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var appearance: AppearanceController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var deploymentTargets: Set<String> = []
     @State private var showURLImporter = false
     @State private var remoteIPAURL = ""
     @State private var dropActive = false
@@ -626,7 +627,16 @@ struct InstallView: View {
                         .toggleStyle(.switch)
                         .help("Refresh about 24 hours before the free seven-day profile expires")
                     Spacer()
-                    Button { model.saveWorkspaceToQueue() } label: {
+                    Menu {
+                        ForEach(Array(Dictionary(grouping: model.devices, by: \.udid).values.compactMap(\.first)).sorted { $0.displayName < $1.displayName }, id: \.udid) { device in
+                            Toggle(device.displayName, isOn: Binding(get: { deploymentTargets.contains(device.udid) }, set: { enabled in
+                                if enabled { deploymentTargets.insert(device.udid) } else { deploymentTargets.remove(device.udid) }
+                            }))
+                        }
+                        Text("Targets use this reviewed account and options; signing remains sequential. Quotas and capabilities are checked per install.")
+                    } label: { Label(deploymentTargets.isEmpty ? "Targets" : "\(deploymentTargets.count) targets", systemImage: "iphone.gen3.radiowaves.left.and.right") }
+                    .disabled(model.workspaceIsBusy)
+                    Button { Task { await model.saveReviewedDeployment(targetUDIDs: deploymentTargets) } } label: {
                         Label(model.reviewingQueueID == nil ? "Queue" : "Save to Queue", systemImage: "text.badge.plus")
                     }
                     .help(model.reviewingQueueID == nil ? "Add reviewed app to installation queue" : "Save reviewed choices to queue")

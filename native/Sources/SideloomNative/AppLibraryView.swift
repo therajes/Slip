@@ -6,6 +6,7 @@ struct AppLibraryView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var appearance: AppearanceController
     @State private var search = ""
+    @State private var browsingCatalog = false
     @State private var updatingWorkspace: SavedAppWorkspace?
     @State private var managingWorkspace: SavedAppWorkspace?
     @State private var sourceAvailability: [String: Bool] = [:]
@@ -21,6 +22,7 @@ struct AppLibraryView: View {
             HStack {
                 PageHeader(eyebrow: "YOUR WORKSPACE", title: "App Library",
                            subtitle: "Your IPAs and saved choices, ready when you are.")
+                Button("Browse…") { browsingCatalog = true }.disabled(model.workspaceIsBusy)
                 Button { addApps() } label: { Label("Add Apps…", systemImage: "plus") }
                     .disabled(model.workspaceIsBusy)
             }
@@ -57,6 +59,7 @@ struct AppLibraryView: View {
                     .font(.caption).foregroundStyle(Chrome.secondaryText)
             }
         }
+        .sheet(isPresented: $browsingCatalog) { CatalogBrowser().environmentObject(model) }
         .sheet(item: $updatingWorkspace) { app in
             AppUpdatesView(workspace: app).environmentObject(model)
         }
@@ -153,6 +156,9 @@ struct AppLibraryView: View {
                         }
                     }
                     .padding(12).background(Chrome.overlay(0.03), in: RoundedRectangle(cornerRadius: 12))
+                }
+                if model.library.queue.contains(where: { $0.status == .failed }), !model.isRunningInstallQueue {
+                    Button("Retry Failed Targets Only") { model.retryFailedDeploymentTargets() }.disabled(model.workspaceIsBusy)
                 }
                 if model.library.queue.contains(where: { $0.status == .installed }), !model.isRunningInstallQueue {
                     Button("Clear Completed") {

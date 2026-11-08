@@ -29,12 +29,14 @@ private final class InstallStreamState: @unchecked Sendable {
     private let lock = NSLock()
     private var terminalEvents: [CoreEvent] = []
     private var cancelled = false
+    private var order = CoreEventOrder()
 
     func record(_ event: CoreEvent) -> Bool {
-        guard event.type == "error" || event.type == "completed" || event.type == "verificationPending" else { return true }
         lock.lock()
+        defer { lock.unlock() }
+        guard order.accept(event) else { return false }
+        guard event.type == "error" || event.type == "completed" || event.type == "verificationPending" else { return true }
         terminalEvents.append(event)
-        lock.unlock()
         return false
     }
 
@@ -84,6 +86,7 @@ final class CoreClient: @unchecked Sendable {
             let errors = Pipe()
             process.executableURL = coreURL
             process.arguments = arguments
+            process.environment = ProcessInfo.processInfo.environment.merging(["SLIP_REQUEST_ID": UUID().uuidString]) { _, new in new }
             process.standardOutput = output
             process.standardError = errors
             try process.run()
@@ -111,7 +114,8 @@ final class CoreClient: @unchecked Sendable {
     }
 
     func run<T: Encodable>(_ arguments: [String], input: T) async throws -> CoreEvent {
-        let encoded = try JSONEncoder().encode(input) + Data([0x0A])
+        let requestID = UUID().uuidString
+        let encoded = try Self.encodeRequest(input, requestID: requestID)
         return try await Task.detached(priority: .userInitiated) { [coreURL] in
             let process = Process()
             let output = Pipe()
@@ -119,6 +123,7 @@ final class CoreClient: @unchecked Sendable {
             let stdin = Pipe()
             process.executableURL = coreURL
             process.arguments = arguments
+            process.environment = ProcessInfo.processInfo.environment.merging(["SLIP_REQUEST_ID": requestID]) { _, new in new }
             process.standardOutput = output
             process.standardError = errors
             process.standardInput = stdin
@@ -148,6 +153,16 @@ final class CoreClient: @unchecked Sendable {
         }.value
     }
 
+    static func encodeRequest<T: Encodable>(_ request: T, requestID: String) throws -> Data {
+        let encoded = try JSONEncoder().encode(request)
+        guard var object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] else {
+            throw SideloomError.message("The signing request must be a structured object.")
+        }
+        object["protocolVersion"] = 3
+        object["requestId"] = requestID
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) + Data([0x0A])
+    }
+
     func installStream(request: InstallRequest) throws -> AsyncThrowingStream<CoreEvent, Error> {
         try authenticatedStream(command: "install", request: request)
     }
@@ -157,13 +172,15 @@ final class CoreClient: @unchecked Sendable {
     }
 
     func authenticatedStream<T: Encodable>(command: String, request: T) throws -> AsyncThrowingStream<CoreEvent, Error> {
-        let encoded = try JSONEncoder().encode(request) + Data([0x0A])
+        let requestID = UUID().uuidString
+        let encoded = try Self.encodeRequest(request, requestID: requestID)
         let process = Process()
         let stdout = Pipe()
         let stderr = Pipe()
         let stdin = Pipe()
         process.executableURL = coreURL
         process.arguments = [command]
+        process.environment = ProcessInfo.processInfo.environment.merging(["SLIP_REQUEST_ID": requestID]) { _, new in new }
         process.standardOutput = stdout
         process.standardError = stderr
         process.standardInput = stdin

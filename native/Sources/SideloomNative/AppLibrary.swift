@@ -33,6 +33,9 @@ enum InstallQueueStatus: String, Codable, Sendable {
     case installed = "Installed"
     case failed = "Needs attention"
     case cancelled = "Cancelled"
+    case waitingForDevice = "Waiting for device"
+    case waitingForAccount = "Waiting for account"
+    case unknown = "Verification pending"
 }
 
 struct InstallQueueItem: Codable, Hashable, Identifiable, Sendable {
@@ -40,6 +43,7 @@ struct InstallQueueItem: Codable, Hashable, Identifiable, Sendable {
     var workspace: SavedAppWorkspace
     var status: InstallQueueStatus = .review
     var message: String?
+    var deployment: DeploymentJob? = nil
 }
 
 struct AppLibraryState: Codable, Equatable, Sendable {
@@ -51,6 +55,12 @@ struct AppLibraryState: Codable, Equatable, Sendable {
     /// Relaunch never restarts signing or treats an interrupted install as success.
     mutating func recoverInterruptedQueue() {
         for index in queue.indices where queue[index].status == .installing {
+            if queue[index].deployment != nil {
+                queue[index].deployment?.phase = .unknown
+                queue[index].status = .unknown
+                queue[index].message = "Interrupted deployment. Verify the intended iPhone before reviewing a retry."
+                continue
+            }
             queue[index].status = .review
             queue[index].message = "Installation was interrupted. Check the app on your iPhone, then review before retrying."
         }

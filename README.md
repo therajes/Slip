@@ -64,7 +64,7 @@ The native release uses **Xcode 27.2 / macOS SDK 27.2**, with a **macOS 26** dep
 
 ```sh
 ./native/build.sh
-./native/create-dmg.sh native/build/Slip.app native/dist/Slip-2.8.0.dmg
+./native/create-dmg.sh native/build/Slip.app native/dist/Slip-2.9.0.dmg
 ```
 
 For the native architecture and development details, see [native/README.md](native/README.md).
@@ -104,3 +104,5 @@ The combined native application incorporating that UI is available under GNU AGP
 The corresponding source and build scripts are included in this repository. Distributing a build requires providing its corresponding source and notices under the applicable license terms. The app bundles its license texts and displays attribution in About Slip.
 
 Original iLoader branding terms remain documented in [LICENSE-BRANDING](LICENSE-BRANDING). Slip is not affiliated with Apple, Sideloadly, or the iLoader maintainers.
+
+See [Slip 2.9 discovery and deployment](docs/RELEASE_NOTES_2.9.0.md) and [migration and backup guidance](docs/MIGRATION_2.9.0.md).

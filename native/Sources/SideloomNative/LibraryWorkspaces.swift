@@ -203,6 +203,7 @@ extension AppModel {
     func invalidateQueueReview(for workspaceID: UUID) {
         for index in library.queue.indices where library.queue[index].workspace.id == workspaceID && library.queue[index].status != .installed {
             library.queue[index].status = .review
+            library.queue[index].deployment?.phase = .needsReview
             library.queue[index].message = "The source IPA changed. Review this app again."
         }
     }
@@ -233,7 +234,7 @@ extension AppModel {
         guard !workspaceIsBusy, !library.queue.isEmpty else { return }
         // Do not silently skip an unreviewed/failed app or reorder the user's queue.
         let pending = library.queue.filter { $0.status != .installed }
-        guard !pending.isEmpty, pending.allSatisfy({ $0.status == .ready }) else {
+        guard !pending.isEmpty, pending.allSatisfy({ [.ready, .waitingForDevice, .waitingForAccount].contains($0.status) }) else {
             libraryNotice = "Review every pending app before starting the queue."
             return
         }
@@ -254,8 +255,18 @@ extension AppModel {
         NotificationCenter.default.post(name: .showInstall, object: nil)
         for id in ids {
             guard !queueCancelled else { break }
-            guard let item = library.queue.first(where: { $0.id == id }), item.status == .ready else { continue }
+            guard let item = library.queue.first(where: { $0.id == id }), [.ready, .waitingForDevice, .waitingForAccount].contains(item.status) else { continue }
             activeQueueID = id
+            if let deployment = item.deployment {
+                guard !deployment.approvalExpired,
+                      deployment.deviceUDID == item.workspace.deviceUDID,
+                      deployment.account == item.workspace.account,
+                      deployment.optionsSHA256 == (try? DeploymentJob.optionsHash(item.workspace.options)),
+                      deployment.sourceSHA256 == (try? await Task.detached { try DeploymentJob.sourceHash(item.workspace.ipa.path) }.value) else {
+                    setQueueResult(id, .review, message: "The reviewed identity or IPA hash changed, or approval expired. Review again.")
+                    break
+                }
+            }
             let opened = await openLibraryWorkspace(item.workspace.id, queueID: id)
             if queueCancelled { setQueueResult(id, .cancelled, message: "Queue stopped. Review before retrying."); break }
             guard opened else {
@@ -270,15 +281,31 @@ extension AppModel {
             await refreshDevices()
             guard !queueCancelled else { break }
             applyWorkspaceChoices(item.workspace)
+            if selectedDevice?.udid != item.workspace.deviceUDID {
+                setQueueResult(id, .waitingForDevice, message: "Reconnect the reviewed iPhone, then resume the queue.")
+                break
+            }
+            if !accounts.contains(item.workspace.account) {
+                setQueueResult(id, .waitingForAccount, message: "Open Accounts and authenticate the reviewed account, then resume.")
+                break
+            }
+            if let team = item.deployment?.teamID, resourcesLoaded, resourcesAccount == item.workspace.account, resourcesTeamID != team {
+                setQueueResult(id, .review, message: "The signing team changed. Review this target again.")
+                break
+            }
             guard blockingInstallIssue == nil else {
                 setQueueResult(id, .failed, message: blockingInstallIssue.map { "\($0.title). \($0.detail)" })
                 break
             }
             setQueueResult(id, .installing)
+            guard await flushLibraryPersistence() else {
+                setQueueResult(id, .failed, message: "The durable queue could not be saved. No install was started.")
+                break
+            }
             let installed: Bool
             if let performInstallation { installed = await performInstallation() }
             else { installed = await installCurrentWorkspace() }
-            setQueueResult(id, installed ? .installed : queueCancelled ? .cancelled : .failed,
+            setQueueResult(id, installed ? .installed : queueCancelled ? .cancelled : diagnostic?.code == .verificationPending ? .unknown : .failed,
                            message: installed ? nil : errorMessage ?? (queueCancelled ? "Queue stopped. Review before retrying." : "Installation stopped. Review this app before retrying."))
             if !installed || pauseQueueAfterCurrent { break }
         }
@@ -288,6 +315,23 @@ extension AppModel {
         guard let index = library.queue.firstIndex(where: { $0.id == id }) else { return }
         library.queue[index].status = status
         library.queue[index].message = message
+        if library.queue[index].deployment != nil {
+            let phase: DeploymentPhase
+            switch status {
+            case .ready: phase = .ready
+            case .review: phase = .needsReview
+            case .waitingForDevice: phase = .waitingForDevice
+            case .waitingForAccount: phase = .waitingForAccount
+            case .installing: phase = .signing
+            case .installed: phase = .succeeded
+            case .unknown: phase = .unknown
+            case .failed: phase = .failed
+            case .cancelled: phase = .cancelled
+            }
+            library.queue[index].deployment?.phase = phase
+            library.queue[index].deployment?.updatedAt = Date()
+            library.queue[index].deployment?.lastErrorCode = diagnostic?.code.rawValue
+        }
         persistWorkspace()
     }
 

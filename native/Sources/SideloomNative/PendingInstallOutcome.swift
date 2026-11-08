@@ -49,6 +49,7 @@ extension AppModel {
         do {
             let event = try await CoreClient().run(["reconcile-install"], input: record)
             if event.type == "noTransfer", event.operationId == record.operationId {
+                guard await reconcileDeploymentOutcome(operationID: record.operationId, verified: false, noTransfer: true) else { return }
                 try await PendingOutcomeStore.shared.clear(operationId: record.operationId)
                 currentStage = "Review required"
                 appendActivity("The previous operation stopped before transfer. Review its workspace before starting again.")
@@ -56,6 +57,7 @@ extension AppModel {
                 return
             }
             if event.confirmsInstallation, event.operationId == record.operationId {
+                guard await reconcileDeploymentOutcome(operationID: record.operationId, verified: true) else { return }
                 if let ipa = record.ipa, let options = record.options, let account = record.account {
                     // Reconciliation never authenticates or installs. The empty
                     // credentials are used only to reconstruct local metadata.

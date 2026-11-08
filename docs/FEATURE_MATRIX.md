@@ -56,3 +56,7 @@ This matrix is the feature overview for Slip 2.8. Slip is designed only for pers
 3. Richer structured device diagnostics beyond the current redacted Activity report.
 4. Live-device validation of renewal after sleep/wake and notification delivery.
 5. Reproducible release signing and notarization when a distribution Developer ID is available.
+
+## 2.9 additions
+
+Catalog Browse uses user-approved sources, bounded cache and optional image previews. Multi-device queue targets remain sequential and independently reviewed. Settings provides portable nonsecret metadata backups; device trust, credentials and private iPhone app data are excluded. See RELEASE_NOTES_2.9.0.md and MIGRATION_2.9.0.md for limits.

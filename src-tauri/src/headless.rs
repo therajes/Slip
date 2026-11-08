@@ -159,7 +159,22 @@ fn configured_provider_url(configured: &str) -> Result<String, AppError> {
     Ok(parsed.as_str().trim_end_matches('/').to_owned())
 }
 
-fn emit(value: Value) {
+static EVENT_STATE: Mutex<(u64, Option<String>)> = Mutex::new((0, None));
+
+fn emit(mut value: Value) {
+    let mut state = EVENT_STATE.lock().unwrap_or_else(|p| p.into_inner());
+    state.0 += 1;
+    if let Some(object) = value.as_object_mut() {
+        if let Some(id) = object.get("operationId").and_then(Value::as_str) { state.1 = Some(id.to_owned()); }
+        object.insert("protocolVersion".into(), json!(3));
+        object.insert("sequence".into(), json!(state.0));
+        let request = std::env::var("SLIP_REQUEST_ID").ok().filter(|s| s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+            .unwrap_or_else(|| format!("core-{}", std::process::id()));
+        object.insert("requestId".into(), json!(request.clone()));
+        if !object.contains_key("operationId") { object.insert("operationId".into(), json!(state.1.as_deref().unwrap_or(&request))); }
+        if let Some(stage) = object.get("stage").cloned() { object.insert("phase".into(), if stage == "account" { json!("authenticate") } else { stage }); }
+    }
+
     let stdout = std::io::stdout();
     let mut output = stdout.lock();
     let _ = serde_json::to_writer(&mut output, &value);
@@ -364,6 +379,7 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             "sideloom-native-{}-{unique}.ipa",
             std::process::id()
         ));
+        emit_progress("transfer", 0.0, "Transferring to selected iPhone");
         let install_result = match get_provider(&request.device).await {
             Ok(provider) => install_signed_app_fast_with_progress(&provider, &signed_app, &optimized,
                 |progress| emit_progress("install", progress, "Installing on selected iPhone")).await,
@@ -372,6 +388,7 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
         job["installAcknowledged"] = json!(install_result.is_ok());
         job["phase"] = json!("verify");
         save_install_job(&request.storage_path, &job)?;
+        emit_progress("verify", 0.0, "Verifying selected iPhone installation");
         let verification = verify_expected_install(&request.device, &signed_bundle).await;
         job["verificationStatus"] = verification.clone();
         if !operation_evidence_confirmed(&job, &verification) { job["phase"] = json!("verificationPending"); }

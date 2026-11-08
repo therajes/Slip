@@ -105,7 +105,18 @@ struct HostIdentityInfo: Codable {
     let localAuthenticationMessage: String?
 }
 
+enum CorePhase: String, Codable, Sendable {
+    case inspect, authenticate, sign, prepare, transfer, install, verify, completed, unknown
+    init(from decoder: Decoder) throws {
+        self = Self(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .unknown
+    }
+}
+
 struct CoreEvent: Codable {
+    let protocolVersion: Int?
+    let requestId: String?
+    let sequence: UInt64?
+    let phase: CorePhase?
     let type: String
     let devices: [DeviceInfo]?
     let errors: [String]?
@@ -314,5 +325,23 @@ extension LoginAccountRequest {
         anisetteServer = try values.decode(String.self, forKey: .anisetteServer)
         storagePath = try values.decode(String.self, forKey: .storagePath)
         authenticationMode = try values.decodeIfPresent(String.self, forKey: .authenticationMode) ?? "remote"
+    }
+}
+
+/// A stream has one request identity; legacy unversioned events remain accepted.
+struct CoreEventOrder {
+    private(set) var requestID: String?
+    private(set) var sequence: UInt64 = 0
+    mutating func accept(_ event: CoreEvent) -> Bool {
+        if let version = event.protocolVersion, version > 3 { return false }
+        if let incoming = event.requestId {
+            if let requestID, requestID != incoming { return false }
+            requestID = incoming
+        }
+        if let incoming = event.sequence {
+            guard incoming > sequence else { return false }
+            sequence = incoming
+        }
+        return true
     }
 }

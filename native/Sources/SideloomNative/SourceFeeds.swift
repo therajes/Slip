@@ -89,12 +89,24 @@ private final class FeedRedirectPolicy: NSObject, URLSessionTaskDelegate, @unche
     }
 }
 
+struct FeedRateLimit: LocalizedError, Sendable {
+    let delay: TimeInterval
+    var errorDescription: String? { "Source rate limited. Cached results remain available; try later." }
+}
+struct FeedFetchResponse: Sendable {
+    let data: Data
+    let notModified: Bool
+    let etag: String?
+    let lastModified: String?
+}
 struct SourceFeedClient: Sendable {
     func releases(source: String, github: Bool, bundleID: String) async throws -> [AppUpdateRelease] {
-        let url = try SourceFeedParser.sourceURL(source, github: github)
-        guard let host = url.host, await NetworkEndpointPolicy.resolvesPublicly(host) else {
-            throw SideloomError.message("The source must resolve to a public internet address.")
-        }
+        let response = try await fetch(url: SourceFeedParser.sourceURL(source, github: github))
+        return try SourceFeedParser.parse(response.data, bundleID: bundleID, github: github)
+    }
+    func fetch(url: URL, etag: String? = nil, lastModified: String? = nil) async throws -> FeedFetchResponse {
+        guard SourceFeedParser.secureURL(url.absoluteString) != nil, let host = url.host,
+              await NetworkEndpointPolicy.resolvesPublicly(host) else { throw SideloomError.message("The source must resolve to a public HTTPS address.") }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil; configuration.urlCredentialStorage = nil
         configuration.timeoutIntervalForRequest = 30; configuration.timeoutIntervalForResource = 60
@@ -103,14 +115,26 @@ struct SourceFeedClient: Sendable {
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Slip", forHTTPHeaderField: "User-Agent")
+        if let etag { request.setValue(etag, forHTTPHeaderField: "If-None-Match") }
+        if let lastModified { request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since") }
         let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw SideloomError.message("The source could not be checked. Check the address, connection, or GitHub rate limit.") }
+        guard let http = response as? HTTPURLResponse else { throw SideloomError.message("Invalid source response.") }
+        if http.statusCode == 429 || (http.statusCode == 403 && http.value(forHTTPHeaderField: "X-RateLimit-Remaining") == "0") {
+            let retry = http.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
+            let reset = http.value(forHTTPHeaderField: "X-RateLimit-Reset").flatMap(Double.init).map { $0 - Date().timeIntervalSince1970 }
+            throw FeedRateLimit(delay: min(3600, max(45, retry ?? reset ?? 60)))
+        }
+        guard [200, 304].contains(http.statusCode) else { throw SideloomError.message("Source unavailable. Try later.") }
+        guard http.url?.host?.lowercased() == host.lowercased() else { throw SideloomError.message("Source changed hosts. Review its new address before subscribing.") }
         guard response.expectedContentLength <= 4 * 1024 * 1024 else { throw SideloomError.message("The source exceeds the 4 MB limit.") }
         var data = Data()
-        for try await byte in bytes {
-            guard data.count < 4 * 1024 * 1024 else { throw SideloomError.message("The source exceeds the 4 MB limit.") }
-            data.append(byte)
+        if http.statusCode != 304 {
+            for try await byte in bytes {
+                try Task.checkCancellation()
+                guard data.count < 4 * 1024 * 1024 else { throw SideloomError.message("The source exceeds the 4 MB limit.") }
+                data.append(byte)
+            }
         }
-        return try SourceFeedParser.parse(data, bundleID: bundleID, github: github)
+        return FeedFetchResponse(data: data, notModified: http.statusCode == 304, etag: http.value(forHTTPHeaderField: "ETag"), lastModified: http.value(forHTTPHeaderField: "Last-Modified"))
     }
 }

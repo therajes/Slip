@@ -69,3 +69,37 @@ extension AppModel {
         }
     }
 }
+
+extension AppModel {
+    /// Catalog discovery never signs; explicit asset selection downloads, inspects,
+    /// validates declared identity and returns to the existing readiness workflow.
+    func prepareCatalogRelease(_ release: AppUpdateRelease, expectedBundleID: String?) async -> Bool {
+        guard !workspaceIsBusy, SourceFeedParser.secureURL(release.downloadURL.absoluteString) != nil else { return false }
+        let generation = UUID()
+        downloadGeneration = generation; isDownloading = true; errorMessage = nil
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "app.sideloom.native/Imports")
+        let task = Task {
+            try await IPAURLDownloadService().download(release.downloadURL, to: directory) { [weak self] progress in
+                Task { @MainActor [weak self] in
+                    guard let self, self.downloadGeneration == generation else { return }
+                    self.downloadProgress = progress
+                }
+            }
+        }
+        downloadTask = task
+        defer { if downloadGeneration == generation { isDownloading = false; downloadGeneration = nil; downloadTask = nil; downloadProgress = nil } }
+        do {
+            let file = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+            try Task.checkCancellation()
+            guard downloadGeneration == generation else { try? FileManager.default.removeItem(at: file); return false }
+            guard await loadIPA(file, downloadID: generation, expectedBundleID: expectedBundleID) else { try? FileManager.default.removeItem(at: file); return false }
+            ipaPreparationNotice = "Catalog asset inspected. Review its actual identity, capabilities and target before signing. No installation has started."
+            NotificationCenter.default.post(name: .showInstall, object: nil)
+            return true
+        } catch {
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { currentStage = "Catalog download cancelled" }
+            else { errorMessage = IPADownloadPolicy.message(error) }
+            return false
+        }
+    }
+}

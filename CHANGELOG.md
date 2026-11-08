@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.9.0 — 2026-11-08
+
+- Add opt-in source catalogs, provenance, conditional offline cache and reviewed downloads.
+- Extend sequential queue with durable exact-device deployment targets and review identities.
+- Extract MainActor coordinators and add correlated ordered protocol v3 events.
+- Add previewable checksummed metadata backups with optional bounded IPA copies and rollback.
+- Preserve 2.8 signing intelligence, outcome verification and SMS authentication.
+
+
 ## 2.8.0 — 2026-11-08
 
 - Add versioned signing-readiness evidence and generated-profile checks before transfer.

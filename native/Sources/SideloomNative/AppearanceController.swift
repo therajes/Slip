@@ -93,6 +93,7 @@ struct AppearanceSettingsView: View {
 
     var body: some View {
         WorkspacePage {
+            BackupView()
             PageHeader(eyebrow: "PERSONALIZE", title: "Make Slip yours", subtitle: "The look and feel of your workspace, just how you like it.")
             GroupBox {
                 VStack(spacing: 0) {
