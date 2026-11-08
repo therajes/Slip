@@ -6,6 +6,7 @@ struct AutoRefreshView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var appearance: AppearanceController
     @AppStorage("renewalNotificationsEnabled") private var renewalNotificationsEnabled = false
+    @State private var notificationStatus: String?
     @State private var replacementID: String?
     @State private var showingSourcePicker = false
 
@@ -74,6 +75,15 @@ struct AutoRefreshView: View {
                 }
                 Toggle("Quiet renewal notifications", isOn: $renewalNotificationsEnabled)
                     .font(.callout)
+                    .onChange(of: renewalNotificationsEnabled) { _, enabled in
+                        guard enabled else { return }
+                        Task {
+                            let allowed = await NotificationCoordinator.shared.requestInteractiveAuthorization()
+                            notificationStatus = allowed ? "Quiet alerts enabled. System notification settings control presentation." : "Notifications are unavailable or denied. Enable Slip alerts in macOS System Settings."
+                            if !allowed { renewalNotificationsEnabled = false }
+                        }
+                    }
+                if let notificationStatus { Text(notificationStatus).font(.caption).foregroundStyle(Chrome.secondaryText) }
                 DisclosureGroup {
                     Text("Keep your Mac awake and your saved IPA in place. Slip prefers Wi-Fi and can use USB. Both devices need the same router or another device’s hotspot.")
                         .font(.callout).foregroundStyle(Chrome.secondaryText)

@@ -18,6 +18,9 @@ struct ActivityView: View {
     var body: some View {
         WorkspacePage {
             PageHeader(eyebrow: "ACTIVITY", title: "Activity", subtitle: "Follow your installations, renewals and device connections.")
+            if let diagnostic = model.diagnostic {
+                DiagnosticRecoveryCard(diagnostic: diagnostic).environmentObject(model)
+            }
             if let error = model.errorMessage {
                 let diagnosis = RecoveryDiagnosis.explain(error)
                 GroupBox {
@@ -30,8 +33,9 @@ struct ActivityView: View {
             }
             Button("Preview Support Report", systemImage: "doc.text.magnifyingglass") {
                 let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
-                reportPreview = "Slip \(version)\nmacOS \(ProcessInfo.processInfo.operatingSystemVersionString)\n\n"
-                    + SupportReport.redact(model.activity.joined(separator: "\n"))
+                let os = ProcessInfo.processInfo.operatingSystemVersion
+                reportPreview = SupportReport.generate(diagnostics: model.diagnostic.map { [$0] } ?? [], appVersion: version,
+                    osVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)")
             }
             GroupBox {
                 HStack(spacing: 12) {
@@ -101,7 +105,7 @@ struct ActivityView: View {
         .sheet(isPresented: Binding(get: { reportPreview != nil }, set: { if !$0 { reportPreview = nil } })) {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Support Report").font(.title2)
-                Text("Review before sharing. URLs, account addresses, device identifiers and local paths are removed. Check any remaining app names or messages for private information.").font(.caption)
+                Text("Review before sharing. Only fixed diagnostic categories, recovery actions and numeric software versions are included. Free-form logs, identities, paths and private context are excluded.").font(.caption)
                 ScrollView { Text(reportPreview ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                 HStack {
                     Button("Close") { reportPreview = nil }

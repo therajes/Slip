@@ -245,7 +245,12 @@ extension AppModel {
     }
 
     func runInstallQueue(_ ids: [UUID], performInstallation: (@MainActor () async -> Bool)? = nil) async {
-        defer { isRunningInstallQueue = false; activeQueueID = nil; persistWorkspace() }
+        defer {
+            isRunningInstallQueue = false; activeQueueID = nil; persistWorkspace()
+            if !library.queue.isEmpty && library.queue.allSatisfy({ $0.status == .installed }) {
+                Task { await NotificationCoordinator.shared.deliver(.queueCompleted) }
+            }
+        }
         NotificationCenter.default.post(name: .showInstall, object: nil)
         for id in ids {
             guard !queueCancelled else { break }

@@ -13,6 +13,10 @@ struct AppIDPlan {
     let checkedAt: Date?
     let remaining: Int?
     let account: String
+    var resourceState: String {
+        guard let checkedAt else { return "Not checked · estimates only" }
+        return Date().timeIntervalSince(checkedAt) > 15 * 60 ? "Stale · refresh resource status before signing" : "Recently checked · availability may change"
+    }
     var reusedCount: Int { entries.filter(\.reused).count }
     var newCount: Int { entries.count - reusedCount }
     var summary: String {

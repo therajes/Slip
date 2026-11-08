@@ -122,6 +122,8 @@ final class AppModel: ObservableObject {
     @Published var isLoggingIn = false
     @Published var loginStage = ""
 
+    @Published var postProvisionChecks: [SigningCheck] = []
+    @Published var diagnostic: SlipDiagnostic?
     let core: CoreClient
     @Published var pausedDownload: PausedIPADownload?
     @Published var pauseQueueAfterCurrent = false
@@ -173,6 +175,7 @@ final class AppModel: ObservableObject {
             Task { [self] in
                 if ipa == nil, !isInspecting, let id = library.activeID { await openLibraryWorkspace(id) }
                 await refreshDevices()
+                await verifyPendingInstallation()
                 deviceMonitor = DeviceConnectionMonitor { [weak self] in
                     guard let self, !self.workspaceIsBusy else { return }
                     await self.refreshDevices(quiet: true)
@@ -1078,7 +1081,37 @@ final class AppModel: ObservableObject {
                         throw SideloomError.message("Apple reported a certificate limit but returned no certificates to revoke. Open Apple Accounts, refresh Certificates & App IDs, and try again.")
                     }
                     showCertificates = true
+                case "operationStarted":
+                    if let id = event.operationId, libraryRepository?.fileURL == AppLibraryRepository.standard.fileURL {
+                        do {
+                            try await PendingOutcomeStore.shared.save(.init(operationId: id, storagePath: request.storagePath, device: request.device,
+                                ipa: ipa, options: request.options, account: request.email, renewalEnabled: item?.enabled ?? keepAutomaticallyRefreshed))
+                        } catch {
+                            core.cancel()
+                            throw SideloomError.message("Could not preserve installation recovery information. Installation stopped before transfer.")
+                        }
+                    }
+                case "postProvisionChecks":
+                    postProvisionChecks = event.checks ?? []
+                case "provisioningReviewRequired":
+                    let alert = NSAlert()
+                    alert.messageText = "Review signing capability changes"
+                    alert.informativeText = event.message ?? "The signed app has capability limitations."
+                    alert.addButton(withTitle: "Cancel Installation")
+                    alert.addButton(withTitle: "Accept Limitations & Continue")
+                    try core.submitCapabilityAcknowledgement(alert.runModal() == .alertSecondButtonReturn)
+                case "verificationPending":
+                    diagnostic = event.diagnostic ?? SlipDiagnostic(code: .verificationPending, phase: "verify", severity: .warning, retryable: true, recovery: .verifyInstallation)
+                    currentStage = "Verification pending"
+                    errorMessage = "The device has not confirmed this installation. Verify its state before retrying; saved installation metadata is unchanged."
+                    return
                 case "completed":
+                    guard event.confirmsInstallation else {
+                        diagnostic = SlipDiagnostic(code: .verificationPending, phase: "verify", severity: .warning, retryable: true, recovery: .verifyInstallation)
+                        currentStage = "Verification pending"
+                        errorMessage = "The signing engine did not provide device verification. Saved installation metadata is unchanged."
+                        return
+                    }
                     completed = true
                     showTwoFactor = false
                     verificationCode = ""
@@ -1122,10 +1155,14 @@ final class AppModel: ObservableObject {
                             appendActivity("Auto Refresh scheduled for \(entry.nextRefreshAt.formatted(date: .abbreviated, time: .shortened))")
                         }
                         }
+                        if libraryRepository?.fileURL == AppLibraryRepository.standard.fileURL, let id = event.operationId {
+                            try await PendingOutcomeStore.shared.clear(operationId: id)
+                        }
                     } catch {
                         appendActivity("Could not save Auto Refresh schedule: \(error.localizedDescription)")
                     }
                 case "error":
+                    diagnostic = event.diagnostic
                     let raw = event.message ?? "Installation failed"
                     if raw.contains("1100") || raw.lowercased().contains("session has expired") || raw.lowercased().contains("session expired") {
                         clearDeveloperSession(for: request.email)
@@ -1430,7 +1467,7 @@ final class AppModel: ObservableObject {
         return result
     }
 
-    private func appendActivity(_ entry: String) {
+    func appendActivity(_ entry: String) {
         activity.insert(entry, at: 0)
         if activity.count > 100 { activity.removeLast(activity.count - 100) }
     }

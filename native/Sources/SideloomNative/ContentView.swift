@@ -145,6 +145,7 @@ struct ContentView: View {
     var body: some View {
         workspaceSurface
         .preferredColorScheme(appearance.theme.scheme)
+        .onReceive(NotificationCenter.default.publisher(for: .showRefreshHealth)) { _ in panelVisible = false; section = .autoRefresh }
         .onReceive(NotificationCenter.default.publisher(for: .showAccounts)) { _ in panelVisible = false; section = .accounts }
         .onReceive(NotificationCenter.default.publisher(for: .showSlipSettings)) { _ in panelVisible = false; section = .settings }
         .onReceive(NotificationCenter.default.publisher(for: .showInstall)) { _ in panelVisible = false; section = .install }

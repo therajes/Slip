@@ -85,7 +85,7 @@ struct IPAURLDownloadService: Sendable {
             let config = URLSessionConfiguration.ephemeral
             config.httpCookieStorage = nil
             config.urlCredentialStorage = nil
-            let session = URLSession(configuration: config)
+            let session = URLSession(configuration: config, delegate: DownloadValidationRedirectPolicy(), delegateQueue: nil)
             defer { session.invalidateAndCancel() }
             let (_, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
@@ -253,5 +253,14 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         lock.lock(); let pausing = pausing; lock.unlock()
         if !pausing { finish(.failure(error ?? URLError(.badServerResponse))) }
+    }
+}
+
+private final class DownloadValidationRedirectPolicy: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        guard let url = request.url, IPADownloadPolicy.url(url.absoluteString) != nil,
+              !(response.url?.scheme == "https" && url.scheme == "http") else { completionHandler(nil); return }
+        completionHandler(request)
     }
 }

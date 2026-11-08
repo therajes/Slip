@@ -66,4 +66,8 @@ codesign --force --sign "$SIDELOOM_SIGN_IDENTITY" --identifier app.sideloom.nati
 codesign --force --deep --sign "$SIDELOOM_SIGN_IDENTITY" --identifier app.sideloom.native "$APP_DIR"
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
+if [[ "${SLIP_PRODUCTION_SIGNING:-0}" == 1 ]]; then
+    "$NATIVE_DIR/production-sign.sh" app "$APP_DIR"
+fi
+
 echo "$APP_DIR"

@@ -47,7 +47,7 @@ async fn main() {
                 );
             }
         }
-        sideloom_lib::headless::emit_fatal(&final_message);
+        println!("{}", serde_json::json!({"type":"error","message":final_message,"diagnostic":error.diagnostic_payload()}));
         std::process::exit(1);
     }
 

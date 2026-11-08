@@ -44,4 +44,7 @@ hdiutil attach "$OUTPUT_PATH" -mountpoint "$MOUNT_DIR" -readonly -nobrowse -noau
 "$PACKAGING_PYTHON" "$SCRIPT_DIR/dmg-layout.py" "$MOUNT_DIR" --verify
 codesign --verify --deep --strict "$MOUNT_DIR/Slip.app"
 hdiutil detach "$MOUNT_DIR" -quiet
+if [[ "${SLIP_PRODUCTION_SIGNING:-0}" == 1 ]]; then
+    "$SCRIPT_DIR/production-sign.sh" dmg "$OUTPUT_PATH"
+fi
 print "DMG ready: $OUTPUT_PATH"

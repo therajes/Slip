@@ -40,6 +40,7 @@ struct DeviceAppsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            DeviceHealthPanel().environmentObject(model)
             PageHeader(
                 eyebrow: "DEVICE MANAGEMENT",
                 title: "iPhone Apps",

@@ -49,6 +49,7 @@ final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
     private let workerMode: Bool
     private var mainWindow: SlipWindow?
     private var waitingToTerminate = false
+    private var notificationObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
     private var recoveryRunning = false
 
@@ -68,6 +69,13 @@ final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
             }
         } else {
             NSApp.setActivationPolicy(.regular)
+            NotificationCoordinator.shared.configureInteractiveApplication()
+            notificationObserver = NotificationCenter.default.addObserver(forName: .slipNotificationAction, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.showMainWindow()
+                    NotificationCenter.default.post(name: .showRefreshHealth, object: nil)
+                }
+            }
             showMainWindow()
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor [weak self] in

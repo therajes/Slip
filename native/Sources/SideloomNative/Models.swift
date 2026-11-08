@@ -72,6 +72,7 @@ struct IpaInfo: Codable, Hashable, Sendable {
     let extensions: [IpaExtensionInfo]
     let appIdCost: Int
     let warnings: [String]
+    var preflight: SigningPreflight? = nil
 }
 
 struct CertificateInfo: Codable, Hashable, Identifiable {
@@ -131,7 +132,19 @@ struct CoreEvent: Codable {
     let details: TwoFactorDetails?
     let teamId: String?
     let profileExpiresAt: Double?
+    let checks: [SigningCheck]?
+    let diagnostic: SlipDiagnostic?
+    let verificationStatus: String?
+    let operationId: String?
+    let expectedBundleId: String?
+    let observedVersion: String?
     let hostIdentity: HostIdentityInfo?
+
+    // Older cores can complete work without device evidence. That is not an
+    // installation confirmation and must not advance renewal/history metadata.
+    var confirmsInstallation: Bool {
+        type == "completed" && verificationStatus == "verified"
+    }
 }
 
 struct UninstallAppsRequest: Codable {

@@ -24,6 +24,10 @@ jobs:
     timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      # Opt in only on a trusted runner with an installed identity and notary profile.
+      SLIP_PRODUCTION_SIGNING: ${{ github.event_name != 'pull_request' && vars.SLIP_PRODUCTION_SIGNING || '0' }}
+      SLIP_DEVELOPER_ID: ${{ secrets.SLIP_DEVELOPER_ID }}
+      SLIP_NOTARY_PROFILE: ${{ secrets.SLIP_NOTARY_PROFILE }}
     outputs:
       version: ${{ steps.metadata.outputs.version }}
       dmg_name: ${{ steps.metadata.outputs.dmg_name }}
@@ -113,7 +117,12 @@ jobs:
           cd native/dist
           shasum -a 256 "$DMG_NAME" > SHA256SUMS.txt
           shasum -a 256 --check SHA256SUMS.txt
-          printf '### Slip DMG\n\nBuilt on GitHub from `%s`. The app is ad-hoc signed; Developer ID signing and Apple notarization are not configured.\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$SLIP_PRODUCTION_SIGNING" == 1 ]]; then
+            signing_label="Developer ID signed; notarization, stapling and Gatekeeper checks passed for app and DMG."
+          else
+            signing_label="Locally signed; no production notarization was requested."
+          fi
+          printf '### Slip DMG\n\nBuilt from `%s`. %s\n' "$GITHUB_SHA" "$signing_label" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v7

@@ -198,6 +198,9 @@ enum AutoRefreshWorker {
             return Result(attempted: 0, succeeded: 0, attentionNeeded: 0)
         }
 
+        if dueIndexes.contains(where: { installations[$0].expiresAt.timeIntervalSince(now) < 24 * 3600 }) {
+            Task { await NotificationCoordinator.shared.deliver(.appExpiring) }
+        }
         let discovery = try? await CoreClient().run(["devices"])
         let devices = discovery?.devices ?? []
         var succeeded = 0
@@ -308,8 +311,27 @@ enum AutoRefreshWorker {
         do {
         for try await event in stream {
             switch event.type {
+            case "operationStarted":
+                if let id = event.operationId {
+                    do {
+                        try await PendingOutcomeStore.shared.save(.init(operationId: id, storagePath: request.storagePath,
+                            device: request.device, options: request.options, account: request.email, renewalEnabled: true))
+                    } catch {
+                        core.cancel()
+                        return .attention("Recovery information could not be saved. Open Slip before retrying.")
+                    }
+                }
             case "completed":
+                guard event.confirmsInstallation else {
+                    outcome = .attention("Device verification is pending. Open Slip to verify before refreshing again.")
+                    continue
+                }
                 outcome = event.profileExpiresAt.map { .installedWithExpiry(Date(timeIntervalSince1970: $0)) } ?? .installed
+            case "provisioningReviewRequired":
+                try? core.submitCapabilityAcknowledgement(false)
+                outcome = .attention("Signing capability changes require review. Open Slip before retrying.")
+            case "verificationPending":
+                outcome = .attention("Installation may have completed. Open Slip to verify this iPhone before retrying.")
             case "twoFactorRequired":
                 try? core.submitTwoFactor(nil)
                 outcome = .attention("Apple requested a verification code. Open Slip and refresh this app manually.")
@@ -376,18 +398,6 @@ enum AutoRefreshWorker {
 
     private static func postNotification(title: String, message: String) {
         guard UserDefaults.standard.bool(forKey: "renewalNotificationsEnabled") else { return }
-        let escape: (String) -> String = {
-            $0.replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-        }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = [
-            "-e",
-            "display notification \"\(escape(message))\" with title \"\(escape(title))\""
-        ]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try? process.run()
+        Task { await NotificationCoordinator.shared.deliver(title == "Slip needs attention" ? .refreshFailed : .refreshSuccess) }
     }
 }

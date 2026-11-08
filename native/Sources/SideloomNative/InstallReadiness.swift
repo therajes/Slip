@@ -140,6 +140,10 @@ extension AppModel {
         guard let ipa else {
             return [.init(id: "ipa", title: "Choose an IPA", detail: "Drop a decrypted IPA or select one in Finder.", symbol: "shippingbox", level: .blocking)]
         }
+        for check in ipa.preflight?.checks ?? [] where check.severity == .block {
+            result.append(.init(id: "signing-" + check.id, title: check.title ?? check.id,
+                detail: check.resolution ?? "Review the Installation Readiness evidence before signing.", symbol: "xmark.shield", level: .blocking))
+        }
         if selectedDevice == nil {
             result.append(.init(id: "device", title: "Connect an iPhone", detail: "Unlock it and complete Trust pairing once over USB.", symbol: "iphone.slash", level: .blocking))
         }

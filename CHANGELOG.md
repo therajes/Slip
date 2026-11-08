@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.8.0 — 2026-11-08
+
+- Add versioned signing-readiness evidence and generated-profile checks before transfer.
+- Require device-scoped inventory confirmation and preserve verification-pending outcomes for reconciliation.
+- Add typed diagnostics, contextual recovery and allowlist-based support reports.
+- Bound archive inspection and reject hostile paths, duplicate entries, special files and excessive expansion.
+- Replace script notifications with native UserNotifications and foreground recovery actions.
+- Add opt-in Developer ID/Hardened Runtime/notarization tooling while retaining local builds.
+- Preserve the owner-confirmed working SMS sign-in flow and existing library/Keychain formats.
+
+See docs/RELEASE_NOTES_2.8.0.md for validation and remaining limits.
+
 ## 2.7.0 — 2026-11-06
 
 - Fix SMS-only Apple authentication routing, real trusted-number selection and duplicate destination requests.

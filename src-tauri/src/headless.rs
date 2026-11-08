@@ -98,6 +98,7 @@ struct PromptResponse {
     resend: Option<bool>,
     number_id: Option<u32>,
     send_to_devices: Option<bool>,
+    acknowledge_capabilities: Option<bool>,
 }
 
 fn default_authentication_mode() -> String {
@@ -221,6 +222,9 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
     if ipa.encryption_status == "Encrypted" {
         return Err(AppError::Misc("This IPA contains an encrypted App Store executable. Choose a decrypted IPA that you are authorized to install; encrypted apps cannot be re-signed.".into()));
     }
+    let mut job = new_install_job(&request)?;
+    save_install_job(&request.storage_path, &job)?;
+    emit(json!({"type":"operationStarted","protocolVersion":2,"operationId":job["operationId"],"sourceSHA256":job["sourceSHA256"]}));
     emit_progress("account", 0.0, "Authenticating with Apple");
 
     let make_max_certs = |cert_input: Input| {
@@ -277,11 +281,18 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             ))))
             .build();
 
+    if new_install_job(&request)?["sourceSHA256"] != job["sourceSHA256"] {
+        return Err(AppError::Misc("The source IPA changed during authentication. Inspect and review the current file before signing.".into()));
+    }
+    job["phase"] = json!("prepare");
+    save_install_job(&request.storage_path, &job)?;
     emit_progress("prepare", 0.0, "Preparing IPA");
     let prepared = prepare_ipa_in(&std::env::temp_dir(), &request.options)?;
     emit_progress("prepare", 1.0, "IPA prepared");
     let mut profile_expires_at: Option<f64> = None;
     let result: Result<(), AppError> = async {
+        job["phase"] = json!("sign");
+        save_install_job(&request.storage_path, &job)?;
         emit_progress("sign", 0.01, "Registering device");
         let provider = get_provider(&request.device).await?;
         let team = sideloader.get_team().await.map_err(|e| {
@@ -303,6 +314,7 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             .await
             .map_err(AppError::from)?;
 
+        let signing_team_id = team.team_id.clone();
         let (signed_app, _) = sideloader
             .sign_app(
                 prepared.clone(),
@@ -314,7 +326,27 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             )
             .await
             .map_err(AppError::from)?;
+        let signed_info = plist::Value::from_file(signed_app.join("Info.plist"))
+            .map_err(|_| AppError::Misc("The signed app's identity could not be read.".into()))?;
+        let signed_bundle = signed_info.as_dictionary().and_then(|v| v.get("CFBundleIdentifier")).and_then(plist::Value::as_string)
+            .ok_or_else(|| AppError::Misc("The signed app has no bundle identifier.".into()))?.to_owned();
+        job["expectedBundleId"] = json!(signed_bundle);
+        job["teamId"] = json!(signing_team_id);
+        let mut checks = final_profile_checks(&signed_app, &signing_team_id)?;
+        let differences = source_capability_differences(&request.options.app_path, &signed_app);
+        let capabilities_changed = !differences.is_empty() || checks.iter().any(|check| check["severity"] == "unknown");
+        checks.extend(differences);
+        emit(json!({"type":"postProvisionChecks","protocolVersion":2,"operationId":job["operationId"],"checks":checks}));
+        if capabilities_changed || (request.options.increased_memory_limit && !signed_memory_capability(&signed_app)) {
+            emit(json!({"type":"provisioningReviewRequired","protocolVersion":2,"operationId":job["operationId"],"message":"The newly signed app changes or cannot confirm source capabilities. Review the entitlement differences before accepting these functionality limitations."}));
+            let response: PromptResponse = read_json(&input)?;
+            if response.acknowledge_capabilities != Some(true) { return Err(AppError::Canceled("Capability changes were not accepted".into())); }
+        }
+        job["phase"] = json!("transfer");
+        save_install_job(&request.storage_path, &job)?;
         profile_expires_at = signed_profile_expiry(&signed_app);
+        job["profileExpiresAt"] = json!(profile_expires_at);
+        save_install_job(&request.storage_path, &job)?;
         emit_progress("sign", 1.0, "App signed");
 
         let unique = SystemTime::now()
@@ -326,56 +358,38 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             std::process::id()
         ));
         let mut install_result = Err(AppError::Misc("Installation did not start".into()));
-        for attempt in 1..=4 {
-            let provider = match get_provider(&request.device).await {
-                Ok(provider) => provider,
-                Err(error) => {
-                    install_result = Err(error);
-                    if attempt < 4 {
-                        emit_progress(
-                            "install",
-                            0.01,
-                            &format!("Waiting for iPhone — retry {attempt} of 4"),
-                        );
-                        tokio::time::sleep(std::time::Duration::from_secs(attempt * 2)).await;
-                        continue;
-                    }
-                    break;
-                }
-            };
-            install_result = install_signed_app_fast_with_progress(
-                &provider,
-                &signed_app,
-                &optimized,
-                move |progress| {
-                    emit_progress(
-                        "install",
-                        progress,
-                        &format!("Installing on iPhone — attempt {attempt} of 4"),
-                    )
-                },
-            )
-            .await;
-            if install_result.is_ok() {
-                break;
+        // A missed transfer acknowledgement must never trigger a duplicate install.
+        match get_provider(&request.device).await {
+            Ok(provider) => {
+                install_result = install_signed_app_fast_with_progress(&provider, &signed_app, &optimized,
+                    |progress| emit_progress("install", progress, "Installing on selected iPhone")).await;
             }
-            if attempt < 4 {
-                emit_progress(
-                    "install",
-                    0.01,
-                    &format!("Connection interrupted — retrying ({attempt}/4)"),
-                );
-                tokio::time::sleep(std::time::Duration::from_secs(attempt * 2)).await;
-            }
+            Err(error) => install_result = Err(error),
         }
+        job["phase"] = json!("verify");
+        save_install_job(&request.storage_path, &job)?;
+        let verification = verify_expected_install(&request.device, &signed_bundle).await;
+        job["verificationStatus"] = verification.clone();
+        if !transfer_confirmed(install_result.is_ok(), &verification) { job["phase"] = json!("verificationPending"); }
+        save_install_job(&request.storage_path, &job)?;
         let _ = std::fs::remove_dir_all(&signed_app);
         let _ = std::fs::remove_file(&optimized);
         install_result
     }
     .await;
-    let _ = std::fs::remove_file(prepared);
+    let _ = std::fs::remove_file(&prepared);
+    if let Some(parent) = prepared.parent() {
+        if parent.file_name().and_then(|v| v.to_str()).is_some_and(|v| v.starts_with("sideloom-owned-")) { let _ = std::fs::remove_dir(parent); }
+    }
+    if job["phase"] == "verificationPending" {
+        emit(json!({"type":"verificationPending","protocolVersion":2,"verificationStatus":"pending","operationId":job["operationId"],"expectedBundleId":job["expectedBundleId"],"message":"Installation outcome is unknown. Reconnect the intended iPhone and verify its inventory before retrying."}));
+        return Ok(());
+    }
     result?;
-    emit(json!({ "type": "completed", "profileExpiresAt": profile_expires_at }));
+    job["phase"] = json!("confirmed");
+    job["profileExpiresAt"] = json!(profile_expires_at);
+    save_install_job(&request.storage_path, &job)?;
+    emit(json!({ "type": "completed", "protocolVersion":2,"verificationStatus":"verified","operationId":job["operationId"],"expectedBundleId":job["expectedBundleId"],"observedVersion":job["verificationStatus"]["version"],"profileExpiresAt": profile_expires_at }));
     Ok(())
 }
 
@@ -1296,6 +1310,24 @@ pub async fn run() -> Result<(), AppError> {
             }));
             Ok(())
         }
+        Some("reconcile-install") => {
+            let input = Arc::new(Mutex::new(BufReader::new(std::io::stdin())));
+            let request: ReconcileInstallRequest = read_json(&input)?;
+            let path = install_job_path(&request.storage_path, &request.operation_id)?;
+            if std::fs::symlink_metadata(&path).map(|v| v.file_type().is_symlink() || v.len() > 1024 * 1024).unwrap_or(true) { return Err(AppError::Misc("Invalid operation record.".into())); }
+            let data = std::fs::read(&path).map_err(|_| AppError::Misc("The pending operation record is unavailable.".into()))?;
+            if data.len() > 1024 * 1024 { return Err(AppError::Misc("Invalid operation record.".into())); }
+            let mut job: Value = serde_json::from_slice(&data).map_err(|_| AppError::Misc("Invalid operation record.".into()))?;
+            if job["targetUDID"].as_str() != Some(&request.device.udid) { return Err(AppError::Misc("Select the iPhone originally targeted by this operation.".into())); }
+            let bundle = job["expectedBundleId"].as_str().ok_or_else(|| AppError::Misc("This operation was interrupted before a signed identity was available. Review it before retrying.".into()))?.to_owned();
+            let outcome = verify_expected_install(&request.device, &bundle).await;
+            let verified = outcome["status"] == "verified";
+            job["verificationStatus"] = outcome.clone();
+            job["phase"] = json!(if verified {"confirmed"} else {"verificationPending"});
+            save_install_job(&request.storage_path, &job)?;
+            emit(json!({"type":if verified {"completed"} else {"verificationPending"},"protocolVersion":2,"verificationStatus":if verified {"verified"} else {"pending"},"operationId":request.operation_id,"expectedBundleId":bundle,"observedVersion":outcome["version"],"profileExpiresAt":job["profileExpiresAt"]}));
+            Ok(())
+        }
         Some("apps") => {
             let input = Arc::new(Mutex::new(BufReader::new(std::io::stdin())));
             let device: DeviceInfo = read_json(&input)?;
@@ -1389,4 +1421,186 @@ pub async fn run() -> Result<(), AppError> {
         )),
 
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReconcileInstallRequest { device: DeviceInfo, storage_path: String, operation_id: String }
+
+fn install_job_path(storage: &str, id: &str) -> Result<PathBuf, AppError> {
+    if id.is_empty() || id.len() > 64 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(AppError::Misc("Invalid operation identifier.".into()));
+    }
+    Ok(PathBuf::from(storage).join("jobs").join(format!("{id}.json")))
+}
+fn new_install_job(request: &InstallRequest) -> Result<Value, AppError> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(&request.options.app_path).map_err(|_| AppError::Misc("The source IPA is unavailable.".into()))?;
+    let mut digest = Sha256::new(); let mut bytes = [0u8; 65536];
+    loop { let n = file.read(&mut bytes).map_err(|_| AppError::Misc("The source IPA could not be hashed.".into()))?; if n == 0 { break; } digest.update(&bytes[..n]); }
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let id = Sha256::digest(format!("{}-{}", std::process::id(), now.as_nanos()).as_bytes()).iter().map(|b| format!("{b:02x}")).collect::<String>();
+    Ok(json!({"schemaVersion":1,"operationId":id,"targetUDID":request.device.udid,"sourceSHA256":digest.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>(),"options":request.options,"createdAt":now.as_secs(),"phase":"inspect"}))
+}
+fn save_install_job(storage: &str, job: &Value) -> Result<(), AppError> {
+    let id = job["operationId"].as_str().ok_or_else(|| AppError::Misc("Invalid operation record.".into()))?;
+    let path = install_job_path(storage, id)?;
+    let directory = path.parent().unwrap();
+    std::fs::create_dir_all(directory).map_err(|_| AppError::Misc("Unable to create the private operation journal.".into()))?;
+    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700)).map_err(|_| AppError::Misc("Unable to protect the operation journal.".into()))?; }
+    if std::fs::symlink_metadata(directory).map(|v| v.file_type().is_symlink()).unwrap_or(true) { return Err(AppError::Misc("The operation journal must not be a symbolic link.".into())); }
+    let temporary = path.with_extension(format!("pending-{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos()));
+    let mut options = std::fs::OpenOptions::new(); options.write(true).create_new(true);
+    #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
+    let mut file = options.open(&temporary).map_err(|_| AppError::Misc("Unable to save the operation journal.".into()))?;
+    let bytes = serde_json::to_vec(job).map_err(|_| AppError::Misc("Invalid operation record.".into()))?;
+    file.write_all(&bytes).and_then(|_| file.sync_all()).map_err(|_| AppError::Misc("Unable to save the operation journal.".into()))?;
+    std::fs::rename(&temporary, &path).map_err(|_| AppError::Misc("Unable to commit the operation journal.".into()))
+}
+
+async fn verify_expected_install(device: &DeviceInfo, expected: &str) -> Value {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let provider = get_provider(device).await?;
+        let mut client = InstallationProxyClient::connect(&provider).await.map_err(|_| AppError::DeviceComs("The selected iPhone's inventory is unavailable.".into()))?;
+        let apps = client.get_apps(Some("User"), None).await.map_err(|_| AppError::DeviceComs("The selected iPhone's inventory is unavailable.".into()))?;
+        Ok::<_, AppError>(apps.get(expected).cloned())
+    }).await;
+    match result {
+        Ok(Ok(Some(value))) => {
+            let version = value.as_dictionary().and_then(|v| v.get("CFBundleShortVersionString")).and_then(plist::Value::as_string);
+            json!({"status":"verified","bundleId":expected,"version":version})
+        }
+        _ => json!({"status":"pending"}),
+    }
+}
+
+fn decoded_profile(path: &std::path::Path) -> Option<plist::Dictionary> {
+    let output = std::process::Command::new("/usr/bin/security").args(["cms", "-D", "-i"]).arg(path).output().ok()?;
+    if !output.status.success() || output.stdout.len() > 4 * 1024 * 1024 { return None; }
+    plist::Value::from_reader(std::io::Cursor::new(output.stdout)).ok()?.into_dictionary()
+}
+fn signed_entitlements(path: &std::path::Path) -> Option<plist::Dictionary> {
+    let output = std::process::Command::new("/usr/bin/codesign").args(["-d", "--entitlements", "-"]).arg(path).output().ok()?;
+    if !output.status.success() || output.stdout.len() > 1024 * 1024 { return None; }
+    plist::Value::from_reader(std::io::Cursor::new(output.stdout)).ok()?.into_dictionary()
+}
+fn signed_memory_capability(path: &std::path::Path) -> bool {
+    signed_entitlements(path).and_then(|v| v.get("com.apple.developer.kernel.increased-memory-limit").and_then(plist::Value::as_boolean)).unwrap_or(false)
+}
+fn identity_authorized(pattern: &str, identity: &str) -> bool {
+    if let Some(prefix) = pattern.strip_suffix('*') { identity.starts_with(prefix) } else { pattern == identity }
+}
+// Wildcards have provisioning semantics only in identity/group fields. A wildcard
+// in an unrelated capability must never accidentally grant arbitrary values.
+fn entitlement_value_authorized(key: &str, signed: &plist::Value, permitted: &plist::Value) -> bool {
+    match (signed, permitted) {
+        (plist::Value::String(value), plist::Value::String(pattern))
+            if matches!(key, "application-identifier" | "keychain-access-groups" | "com.apple.security.application-groups") => identity_authorized(pattern, value),
+        (plist::Value::Array(values), plist::Value::Array(allowed)) => values.iter().all(|value| allowed.iter().any(|pattern| entitlement_value_authorized(key, value, pattern))),
+        (plist::Value::Dictionary(values), plist::Value::Dictionary(allowed)) => values.iter().all(|(name, value)| allowed.get(name).is_some_and(|pattern| entitlement_value_authorized(name, value, pattern))),
+        _ => signed == permitted,
+    }
+}
+fn signed_entitlements_authorized(signed: &plist::Dictionary, permitted: &plist::Dictionary) -> bool {
+    signed.iter().all(|(key, value)| {
+        // Explicitly disabling a capability grants no additional privilege.
+        value.as_boolean() == Some(false) || permitted.get(key).is_some_and(|allowed| entitlement_value_authorized(key, value, allowed))
+    })
+}
+fn final_profile_checks(app: &std::path::Path, team: &str) -> Result<Vec<Value>, AppError> {
+    let mut checks = Vec::new();
+    let mut pending = vec![app.to_owned()]; let mut visited = 0;
+    while let Some(path) = pending.pop() {
+        visited += 1;
+        if visited > 10000 { return Err(AppError::Misc("Signed bundle inspection exceeded its component limit.".into())); }
+        for entry in std::fs::read_dir(&path).map_err(|_| AppError::Misc("Signed app components could not be inspected.".into()))? {
+            let entry = entry.map_err(|_| AppError::Misc("Signed app components could not be inspected.".into()))?;
+            if entry.file_type().map(|v| v.is_dir()).unwrap_or(false) { pending.push(entry.path()); }
+        }
+        if path.extension().and_then(|v| v.to_str()).is_none_or(|v| v != "app" && v != "appex") { continue; }
+        let info = plist::Value::from_file(path.join("Info.plist")).ok().and_then(plist::Value::into_dictionary);
+        let bundle = info.as_ref().and_then(|v| v.get("CFBundleIdentifier")).and_then(plist::Value::as_string).unwrap_or("");
+        let profile = decoded_profile(&path.join("embedded.mobileprovision"));
+        let entitlements = profile.as_ref().and_then(|v| v.get("Entitlements")).and_then(plist::Value::as_dictionary);
+        let allowed = entitlements.and_then(|v| v.get("application-identifier")).and_then(plist::Value::as_string);
+        let profile_team = entitlements.and_then(|v| v.get("com.apple.developer.team-identifier")).and_then(plist::Value::as_string);
+        let identity = format!("{team}.{bundle}");
+        let blocked = allowed.is_some_and(|p| !identity_authorized(p, &identity)) || profile_team.is_some_and(|v| v != team);
+        checks.push(json!({"id":format!("{bundle}:profile.identity"),"severity":if blocked {"block"} else if allowed.is_some() {"pass"} else {"unknown"},"stage":"post-provision","component":bundle,"evidence":"newly generated embedded profile","observed":allowed,"expected":identity,"resolution":"Review the selected signing team and bundle identity."}));
+        if blocked { return Err(AppError::Misc("The newly issued provisioning profile does not authorize the signed app's team and identity. Transfer was blocked.".into())); }
+        if let Some(signed) = signed_entitlements(&path) {
+            if let Some(permitted) = entitlements {
+                if !signed_entitlements_authorized(&signed, permitted) {
+                    return Err(AppError::Misc("The newly issued profile does not authorize the signed capabilities. Transfer was blocked; review entitlement differences.".into()));
+                }
+                checks.push(json!({"id":format!("{bundle}:profile.capabilities"),"severity":"pass","stage":"post-provision","component":bundle,"evidence":"Signed executable entitlements compared with newly generated profile","resolution":"Profile authorization does not guarantee runtime functionality."}));
+            } else {
+                checks.push(json!({"id":format!("{bundle}:profile.capabilities"),"severity":"unknown","stage":"post-provision","component":bundle,"evidence":"Issued profile entitlements could not be read","resolution":"Explicitly accept that capability authorization is unverified or cancel."}));
+            }
+        } else {
+            checks.push(json!({"id":format!("{bundle}:profile.capabilities"),"severity":"unknown","stage":"post-provision","component":bundle,"evidence":"Signed executable entitlements could not be read","resolution":"Explicitly accept that capability authorization is unverified or cancel."}));
+        }
+    }
+    Ok(checks)
+}
+
+#[cfg(test)]
+mod installation_verification_tests {
+    use super::*;
+    #[test] fn wildcard_identity_is_scoped_to_its_team() {
+        assert!(identity_authorized("TEAM.com.example.*", "TEAM.com.example.app"));
+        assert!(!identity_authorized("OTHER.*", "TEAM.com.example.app"));
+        assert!(!identity_authorized("TEAM.com.example", "TEAM.com.example.other"));
+    }
+    #[test] fn profile_capabilities_are_checked_beyond_identity() {
+        let mut allowed = plist::Dictionary::new();
+        allowed.insert("keychain-access-groups".into(), plist::Value::Array(vec![plist::Value::String("TEAM.*".into())]));
+        let mut signed = plist::Dictionary::new();
+        signed.insert("keychain-access-groups".into(), plist::Value::Array(vec![plist::Value::String("TEAM.app".into())]));
+        assert!(signed_entitlements_authorized(&signed, &allowed));
+        signed.insert("aps-environment".into(), plist::Value::String("production".into()));
+        assert!(!signed_entitlements_authorized(&signed, &allowed));
+        signed.remove("aps-environment");
+        signed.insert("keychain-access-groups".into(), plist::Value::Array(vec![plist::Value::String("OTHER.app".into())]));
+        assert!(!signed_entitlements_authorized(&signed, &allowed));
+        assert!(!entitlement_value_authorized("aps-environment", &plist::Value::String("production".into()), &plist::Value::String("*".into())));
+    }
+    #[test] fn journal_identifiers_cannot_escape_private_directory() {
+        assert!(install_job_path("/tmp/fixture", "../account").is_err());
+        assert!(install_job_path("/tmp/fixture", "abcdef123456").is_ok());
+    }
+}
+
+fn transfer_confirmed(transfer_success: bool, inventory: &Value) -> bool {
+    transfer_success && inventory["status"] == "verified"
+}
+#[cfg(test)]
+mod outcome_boundary_tests {
+    use super::*;
+    #[test] fn a_preexisting_app_cannot_turn_a_failed_transfer_into_success() {
+        assert!(!transfer_confirmed(false, &json!({"status":"verified"})));
+        assert!(!transfer_confirmed(true, &json!({"status":"pending"})));
+        assert!(transfer_confirmed(true, &json!({"status":"verified"})));
+    }
+}
+
+fn source_capability_differences(source: &str, signed: &std::path::Path) -> Vec<Value> {
+    let Ok(info) = inspect_ipa(source.to_owned()) else { return vec![json!({"id":"source.capabilities","severity":"warning","stage":"post-provision","evidence":"Source analysis unavailable","resolution":"Review the signed app before accepting unknown capability changes."})]; };
+    let mut result = Vec::new();
+    for check in info.preflight.checks.iter().filter(|c| c.id.ends_with(":entitlements") || c.id.ends_with(":binary")) {
+        result.push(json!({"id":check.id,"severity":"warning","stage":"post-provision","component":check.component,"evidence":"Source executable capabilities unavailable for comparison","resolution":"Explicitly accept unverified source functionality or cancel installation."}));
+    }
+    for check in info.preflight.checks.iter().filter(|c| c.id.contains(":entitlement:")) {
+        let key = check.id.split(":entitlement:").last().unwrap_or("");
+        if ["application-identifier", "com.apple.developer.team-identifier", "keychain-access-groups"].contains(&key) { continue; }
+        let relative = check.component.split_once(".app/").map(|(_, rest)| rest).unwrap_or("");
+        let entitlements = signed_entitlements(&signed.join(relative));
+        let value = entitlements.as_ref().and_then(|v| v.get(key));
+        let observed = value.map(crate::ipa::entitlement_summary);
+        if (observed != check.observed || check.observed.as_deref().is_some_and(|v| v.starts_with("Unverifiable:"))) && check.observed.as_deref() != Some("false") {
+            result.push(json!({"id":check.id,"severity":"warning","stage":"post-provision","component":check.component,"evidence":"Source code-signature entitlement versus newly signed executable","expected":check.observed,"observed":observed.unwrap_or_else(||"Unavailable or removed".into()),"resolution":"Explicitly accept this functionality limitation or cancel installation."}));
+        }
+    }
+    result
 }

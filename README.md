@@ -2,9 +2,9 @@
 
 Inspect, customize, install, and refresh IPAs in a Liquid Glass workspace.
 
-[![Build Slip](https://github.com/therajes/Slip/actions/workflows/build.yml/badge.svg)](https://github.com/therajes/Slip/actions/workflows/build.yml) ![Slip 2.7](https://img.shields.io/badge/Slip-2.7-64748b?style=flat-square) ![macOS 26 or newer](https://img.shields.io/badge/macOS-26%2B-24292f?style=flat-square&logo=apple&logoColor=white) ![Built with SwiftUI and Rust](https://img.shields.io/badge/SwiftUI_%2B_Rust-native-777?style=flat-square)
+[![Build Slip](https://github.com/therajes/Slip/actions/workflows/build.yml/badge.svg)](https://github.com/therajes/Slip/actions/workflows/build.yml) ![Slip 2.7](https://img.shields.io/badge/Slip-2.8-64748b?style=flat-square) ![macOS 26 or newer](https://img.shields.io/badge/macOS-26%2B-24292f?style=flat-square&logo=apple&logoColor=white) ![Built with SwiftUI and Rust](https://img.shields.io/badge/SwiftUI_%2B_Rust-native-777?style=flat-square)
 
-[**Download Slip**](https://github.com/therajes/Slip/releases/latest) · [What's new in 2.7](docs/RELEASE_NOTES_2.7.0.md) · [Screenshot gallery](docs/GALLERY.md) · [Source](https://github.com/therajes/Slip/tree/main)
+[**Download Slip**](https://github.com/therajes/Slip/releases/latest) · [What's new in 2.8](docs/RELEASE_NOTES_2.8.0.md) · [Screenshot gallery](docs/GALLERY.md) · [Source](https://github.com/therajes/Slip/tree/main)
 
 ![Slip 2.7 App Library with cached artwork and update controls](design/screenshots/2.7/slip-library.png)
 
@@ -24,7 +24,13 @@ Slip brings SwiftUI and AppKit together with a Rust core for IPA preparation, Ap
 
 Auto Refresh and the disk image are captured from 2.6. Settings and device inventory images are retained from earlier releases. Explore the [gallery](docs/GALLERY.md) or [feature matrix](docs/FEATURE_MATRIX.md) for more.
 
-## New in 2.7
+## New in 2.8
+
+Installation Readiness adds versioned evidence about source entitlements, archive integrity and signing limitations. Source provisioning is preliminary; generated profiles are checked before transfer. Install outcomes require inventory confirmation on the intended iPhone, otherwise verification remains pending. Typed recovery cards, sanitized reports and native quiet notifications make uncertainty visible.
+
+Slip 2.7 SMS-only sign-in was confirmed working by the owner. The authentication semantics are preserved. See [2.8 release notes and validation limits](docs/RELEASE_NOTES_2.8.0.md).
+
+## Included from 2.7
 
 - **SMS sign-in fix.** Accounts using phone verification follow Apple's SMS challenge and actual trusted-number IDs. Selecting the same destination preserves its current code.
 - **Updates in App Library.** Follow developer GitHub releases or an HTTPS AltStore source. Review versions, release notes, iOS requirements and available IPA assets.
@@ -58,14 +64,14 @@ The native release uses **Xcode 27.2 / macOS SDK 27.2**, with a **macOS 26** dep
 
 ```sh
 ./native/build.sh
-./native/create-dmg.sh native/build/Slip.app native/dist/Slip-2.7.0.dmg
+./native/create-dmg.sh native/build/Slip.app native/dist/Slip-2.8.0.dmg
 ```
 
 For the native architecture and development details, see [native/README.md](native/README.md).
 
 GitHub Actions runs the tests and builds a DMG on every push to `main`. Version tags publish that GitHub-built DMG and its SHA-256 checksum to Releases. See [the release workflow](docs/RELEASING.md).
 
-Current automated builds are ad-hoc signed. Developer ID signing and Apple notarization are not configured, so macOS may require explicit approval to open a downloaded build.
+Default automated builds are locally signed without production notarization. Opt-in Developer ID signing, Hardened Runtime, notarization and stapling are available when a trusted runner has securely provisioned credentials; see [release instructions](docs/RELEASING.md).
 
 ### Development checks
 

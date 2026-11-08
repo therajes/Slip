@@ -1,6 +1,6 @@
 # Slip feature matrix
 
-This matrix is the feature overview for Slip 2.7. Slip is designed only for personal iPhones running stock iOS.
+This matrix is the feature overview for Slip 2.8. Slip is designed only for personal iPhones running stock iOS.
 
 ## Shipped
 
@@ -22,7 +22,9 @@ This matrix is the feature overview for Slip 2.7. Slip is designed only for pers
 | Inventory | Native app icons, select, copy bundle IDs, refresh managed apps, uninstall user apps | Icons are read from the paired iPhone through SpringBoard; uninstall requires confirmation, reports partial failures, and removes matching refresh recipes so removed apps stay removed. |
 | Diagnostics | Activity timeline, actionable recovery, previewable redacted support reports | Privacy mode hides Apple IDs, device IDs, and the user home path. |
 | Appearance | Native Liquid Glass, adaptive light/dark glass icon, dimensional symbols, motion control | Automatic icon mode follows the Mac appearance; Reduce Motion always takes priority. |
-| Preflight | Bundle ID, iOS version, encryption, custom icon, typed plist, duplicate/protected-key validation | Blocking issues disable installation and explain the correction before Apple signing starts. |
+| Preflight | Versioned source evidence, signing limitations, bounded archive inspection and issued-profile checks | Preliminary checks never promise Apple capability approval. Unknown evidence remains explicit. |
+| Outcomes | Exact-device installed-bundle inventory confirmation; verification-pending reconciliation | Transfer completion alone is insufficient. Version evidence is reported only when available. |
+| Notifications | Native quiet notifications with foreground recovery | Authorization is requested interactively. Delivery and clicks still require real-host validation. |
 | Performance | Raw transfer of unchanged compressed IPA entries | A 196 MB test IPA prepared in 1.15 seconds versus 4.42 seconds in 1.0 on the same Mac. |
 | App management | Per-app GitHub/AltStore update sources, release notes, compatibility, reviewed update preparation | Checks are manual; downloaded bundle IDs must match. Installed versions require matching device inventory. |
 | Library | Cached artwork, version history, reusable customization presets | Historical installs are not invented; presets exclude account/device credentials. |
@@ -49,8 +51,8 @@ This matrix is the feature overview for Slip 2.7. Slip is designed only for pers
 
 ## Next engineering priorities
 
-1. Live SMS-only account validation and end-to-end update installation on a paired iPhone.
-2. Provisioning-profile and entitlement diff preview before signing.
+1. End-to-end 2.8 update installation on a paired iPhone; owner confirmed live SMS-only sign-in on 2.7.
+2. Broaden signing fixtures and validate real-account entitlement differences.
 3. Richer structured device diagnostics beyond the current redacted Activity report.
 4. Live-device validation of renewal after sleep/wake and notification delivery.
 5. Reproducible release signing and notarization when a distribution Developer ID is available.

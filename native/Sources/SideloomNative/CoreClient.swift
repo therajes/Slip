@@ -31,7 +31,7 @@ private final class InstallStreamState: @unchecked Sendable {
     private var cancelled = false
 
     func record(_ event: CoreEvent) -> Bool {
-        guard event.type == "error" || event.type == "completed" else { return true }
+        guard event.type == "error" || event.type == "completed" || event.type == "verificationPending" else { return true }
         lock.lock()
         terminalEvents.append(event)
         lock.unlock()
@@ -205,7 +205,7 @@ final class CoreClient: @unchecked Sendable {
                     } else if result.contains(where: { $0.type == "error" }) {
                         for event in result where event.type == "error" { continuation.yield(event) }
                         continuation.finish()
-                    } else if process.terminationStatus == 0 && result.contains(where: { $0.type == "completed" }) {
+                    } else if process.terminationStatus == 0 && result.contains(where: { $0.type == "completed" || $0.type == "verificationPending" }) {
                         for event in result { continuation.yield(event) }
                         continuation.finish()
                     } else {
@@ -324,5 +324,14 @@ private struct TwoFactorMethodResponse: Encodable {
 extension CoreClient {
     func selectTwoFactorMethod(numberID: UInt32?) throws {
         try send(TwoFactorMethodResponse(numberId: numberID, sendToDevices: numberID == nil))
+    }
+}
+
+private struct CapabilityAcknowledgement: Encodable {
+    let acknowledge_capabilities: Bool
+}
+extension CoreClient {
+    func submitCapabilityAcknowledgement(_ accepted: Bool) throws {
+        try send(CapabilityAcknowledgement(acknowledge_capabilities: accepted))
     }
 }

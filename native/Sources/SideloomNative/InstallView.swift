@@ -47,7 +47,9 @@ struct InstallView: View {
                                 .font(.callout).foregroundStyle(Chrome.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                        if !model.postProvisionChecks.isEmpty { SigningReadinessPanel(preflight: .init(schemaVersion: 1, checks: model.postProvisionChecks)) }
                         statusRibbon
+                        if let preflight = model.ipa?.preflight { SigningReadinessPanel(preflight: preflight) }
                         appIDPlannerCard
                         customizationCard
                             .disabled(model.isInstalling || model.isRunningInstallQueue || model.isImportingLibrary || model.isRestoringWorkspace)
@@ -63,6 +65,7 @@ struct InstallView: View {
                         }
                     }
 
+                    DeviceHealthPanel().environmentObject(model)
                     readinessCard
                 }
                 .padding(.horizontal, 28)
@@ -410,6 +413,7 @@ struct InstallView: View {
                     Text("Estimate: account registrations have not been checked. All IDs are counted as new until you check with Apple.")
                         .font(.caption).foregroundStyle(.orange)
                 }
+                Text(plan.resourceState).font(.caption).foregroundStyle(Chrome.secondaryText)
                 if let remaining = plan.remaining {
                     Text("Apple last reported \(remaining) available. \(plan.newCount > remaining ? "Remove optional extensions or wait for quota to renew." : "Availability can change before signing.")")
                         .font(.caption).foregroundStyle(plan.newCount > remaining ? Color.orange : Chrome.secondaryText)

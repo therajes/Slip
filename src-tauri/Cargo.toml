@@ -1,6 +1,6 @@
 [package]
 name = "sideloom"
-version = "2.7.0"
+version = "2.8.0"
 description = "Mac-first IPA inspector, customizer, signer, and installer"
 authors = ["nab138"]
 edition = "2024"

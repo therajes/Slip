@@ -277,7 +277,7 @@ pub async fn get_provider_from_connection(
     })?;
     let device = devices
         .iter()
-        .find(|device| device.device_id == device_info.id)
+        .find(|device| device.device_id == device_info.id && device.udid == device_info.udid)
         .or_else(|| {
             devices.iter().find(|device| {
                 device.udid == device_info.udid && matches!(device.connection_type, Connection::Usb)

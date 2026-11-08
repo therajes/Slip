@@ -34,6 +34,12 @@ enum SourceFeedParser {
     static func secureURL(_ value: String) -> URL? {
         guard let parts = URLComponents(string: value), parts.scheme?.lowercased() == "https", parts.host?.isEmpty == false,
               parts.user == nil, parts.password == nil else { return nil }
+        let host = (parts.host ?? "").lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        guard host != "localhost", !host.hasSuffix(".localhost"), !host.hasSuffix(".local"),
+              host != "::1", !host.hasPrefix("fe80:"), !(host.contains(":") && (host.hasPrefix("fc") || host.hasPrefix("fd"))),
+              !host.hasPrefix("127."), !host.hasPrefix("10."), !host.hasPrefix("192.168."), !host.hasPrefix("169.254."), host != "0.0.0.0" else { return nil }
+        let octets = host.split(separator: ".").compactMap { Int($0) }
+        if octets.count == 4 && octets[0] == 172 && (16...31).contains(octets[1]) { return nil }
         return parts.url
     }
     static func sourceURL(_ input: String, github: Bool) throws -> URL {

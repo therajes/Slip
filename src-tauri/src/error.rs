@@ -265,3 +265,18 @@ impl From<Report> for AppError {
         AppError::Misc(report_str)
     }
 }
+
+impl AppError {
+    pub fn diagnostic_payload(&self) -> serde_json::Value {
+        let (code, phase, retryable, recovery) = match self {
+            Self::Canceled(_) => ("operation.cancelled", "operation", false, "detailedDiagnostics"),
+            Self::NotEnoughAppIds(_) | Self::MaxApps(_) => ("account.app_id_capacity", "account", false, "refreshResources"),
+            Self::Auth(_) | Self::NotLoggedIn | Self::AccountLocked(_) | Self::Underage(_) | Self::Anisette(_) => ("authentication.interaction_required", "authenticate", false, "openAccounts"),
+            Self::RemotePairing(_) | Self::LockdownPairing(_, _) => ("device.untrusted", "device", false, "connectUSB"),
+            Self::DeviceComs(_) | Self::DeviceComsWithMessage(_, _) | Self::Usbmuxd(_, _) | Self::NoDeviceSelected => ("device.disconnected", "device", true, "retryDiscovery"),
+            Self::Download(_) => ("network.timeout", "download", true, "retrySafely"),
+            _ => ("operation.unknown", "operation", false, "detailedDiagnostics"),
+        };
+        serde_json::json!({"schemaVersion":1,"code":code,"phase":phase,"severity":"error","retryable":retryable,"recovery":recovery})
+    }
+}

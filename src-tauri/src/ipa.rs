@@ -39,6 +39,161 @@ pub struct IpaInfo {
     pub extensions: Vec<IpaExtensionInfo>,
     pub app_id_cost: usize,
     pub warnings: Vec<String>,
+    pub preflight: PreflightReport,
+}
+
+/// Versioned, bounded evidence from the source archive, never an Apple capability promise.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreflightReport { pub schema_version: u8, pub checks: Vec<PreflightCheck> }
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreflightCheck {
+    pub id: String, pub severity: String, pub stage: String, pub component: String,
+    pub evidence: String, pub observed: Option<String>, pub expected: Option<String>,
+    pub resolution: String,
+}
+// Large games remain supported: 200k entries, 32 GiB expanded total, 8 GiB per
+// file. Highly compressible tiny metadata is exempt from the 1000:1 ratio cap.
+const MAX_ENTRIES: usize = 200_000;
+const MAX_EXPANDED: u64 = 32 * 1024 * 1024 * 1024;
+const MAX_ENTRY: u64 = 8 * 1024 * 1024 * 1024;
+const MAX_METADATA: u64 = 8 * 1024 * 1024;
+const MAX_BINARY_INSPECTION: u64 = 256 * 1024 * 1024;
+
+fn validate_archive(archive: &mut ZipArchive<File>) -> Result<(), AppError> {
+    if archive.len() > MAX_ENTRIES { return Err(AppError::Misc("IPA exceeds the 200,000-entry safety limit.".into())); }
+    let mut total = 0u64;
+    let mut path_bytes = 0usize;
+    let mut names = HashSet::new();
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|e| AppError::Misc(format!("Invalid IPA entry: {e}")))?;
+        validate_archive_name(entry.name())?;
+        path_bytes = path_bytes.saturating_add(entry.name().len());
+        if path_bytes > 32 * 1024 * 1024 { return Err(AppError::Misc("IPA archive paths exceed the 32 MiB metadata budget.".into())); }
+        if entry.name().len() > 4096 || entry.name().split('/').count() > 128 {
+            return Err(AppError::Misc("IPA archive path exceeds inspection limits.".into()));
+        }
+        if !names.insert(entry.name().trim_end_matches('/').to_lowercase()) {
+            return Err(AppError::Misc("IPA contains duplicate or case-colliding paths.".into()));
+        }
+        let kind = entry.unix_mode().unwrap_or(0) & 0o170000;
+        if !matches!(kind, 0 | 0o100000 | 0o040000) {
+            return Err(AppError::Misc("IPA contains a symbolic link or special file; obtain a regular-file IPA.".into()));
+        }
+        total = total.checked_add(entry.size()).ok_or_else(|| AppError::Misc("IPA expanded size overflow.".into()))?;
+        if entry.size() > MAX_ENTRY || total > MAX_EXPANDED ||
+            (entry.size() > 16 * 1024 * 1024 && entry.size() / entry.compressed_size().max(1) > 1000) {
+            return Err(AppError::Misc("IPA exceeds archive safety limits (8 GiB/file, 32 GiB total, or 1000:1 compression).".into()));
+        }
+    }
+    Ok(())
+}
+
+fn bounded_entry(archive: &mut ZipArchive<File>, name: &str, limit: u64) -> Result<Vec<u8>, AppError> {
+    let entry = archive.by_name(name).map_err(|e| AppError::Misc(format!("Unable to inspect {name}: {e}")))?;
+    if entry.size() > limit { return Err(AppError::Misc(format!("Inspection input {name} exceeds its {limit}-byte safety budget."))); }
+    let mut data = Vec::new();
+    entry.take(limit + 1).read_to_end(&mut data).map_err(|e| AppError::Misc(format!("Unable to read {name}: {e}")))?;
+    if data.len() as u64 > limit { return Err(AppError::Misc("IPA entry expands beyond its inspection budget.".into())); }
+    Ok(data)
+}
+
+/// Preserve structured capability values so equal-length arrays cannot hide a
+/// changed App Group or associated domain. Oversized values remain explicit.
+pub(crate) fn entitlement_summary(value: &Value) -> String {
+    let encoded = serde_json::to_string(value).unwrap_or_else(|_| "Unverifiable structured value".into());
+    if encoded.len() > 4096 { "Unverifiable: structured entitlement exceeds display budget".into() } else { encoded }
+}
+
+fn source_checks(archive: &mut ZipArchive<File>, root: &str, info: &Dictionary) -> Vec<PreflightCheck> {
+    let mut checks = Vec::new();
+    let mut add = |id: &str, severity: &str, observed: Option<String>, expected: Option<String>, evidence: &str, resolution: &str| {
+        checks.push(PreflightCheck { id: format!("{root}:{id}"), severity: severity.into(), stage: "offlineAnalysis".into(), component: root.into(), observed, expected, evidence: evidence.into(), resolution: resolution.into() });
+    };
+    let binary = plist_string(info, "CFBundleExecutable").and_then(|name| bounded_entry(archive, &format!("{root}{name}"), MAX_BINARY_INSPECTION).ok());
+    if let Some(bytes) = binary.as_ref() {
+        let status = macho_encryption_status(bytes);
+        add("encryption", if status == "Encrypted" { "block" } else if status == "Decrypted" { "pass" } else { "unknown" }, Some(status), Some("Unencrypted Mach-O".into()), "Mach-O load commands", "Use a complete, legitimately decrypted IPA.");
+        let cpu = read_u32(bytes, 4, true);
+        let architecture = match cpu { Some(0x0100000c) => Some("arm64"), Some(12) => Some("arm"), Some(0x01000007) => Some("x86_64"), _ => None };
+        add("architecture", if architecture == Some("x86_64") { "block" } else if architecture.is_some() { "pass" } else { "unknown" }, architecture.map(str::to_owned), Some("Physical iPhone architecture".into()), "Mach-O CPU header (fat slices require further verification)", "Use a device build rather than an iOS Simulator archive.");
+        // Read actual embedded XML entitlements from the code-signature SuperBlob.
+        let entitlement = embedded_xml_entitlements(bytes);
+        if let Some(entitlements) = entitlement {
+            for (key, value) in entitlements.iter().take(64) {
+                if key.len() > 256 { continue; }
+                let observed = entitlement_summary(value);
+                add(&format!("entitlement:{key}"), "unknown", Some(observed), None, "Embedded code-signature entitlement blob; source signature is not a newly issued profile", "Compare this capability with the actual profile issued for the selected team before transfer.");
+            }
+        } else {
+            add("entitlements", "unknown", None, None, "No readable XML code-signature entitlements; DER-only or unsigned binary may be present", "Entitlements require verification against the newly issued profile.");
+        }
+    } else { add("binary", "unknown", None, None, "Executable absent or beyond finite inspection budget", "Use a complete IPA and review signing diagnostics."); }
+    let profile_name = format!("{root}embedded.mobileprovision");
+    let profile = bounded_entry(archive, &profile_name, MAX_METADATA).ok().and_then(|bytes| xml_dictionary(&bytes));
+    add("source-profile", "unknown", profile.as_ref().and_then(|p| plist_string(p, "Name")).map(|v| v.chars().take(128).collect()), None, if profile.is_some() { "Source CMS profile metadata (not signature-validated and not Slip's newly issued profile)" } else { "Source provisioning profile missing or unreadable" }, "The source profile does not prove selected-account signing availability.");
+    add("minimum-ios", if info.get("MinimumOSVersion").is_some() { "pass" } else { "unknown" }, plist_string(info, "MinimumOSVersion"), None, "Source Info.plist declaration; binary/framework requirements may be higher", "Compare with the selected iPhone OS and inspect nested components.");
+    checks
+}
+
+fn xml_dictionary(bytes: &[u8]) -> Option<Dictionary> {
+    let start = bytes.windows(5).position(|v| v == b"<?xml")?;
+    let tail = &bytes[start..];
+    let end = tail.windows(8).position(|v| v == b"</plist>")? + 8;
+    plist::from_bytes(&tail[..end]).ok()
+}
+
+fn embedded_xml_entitlements(bytes: &[u8]) -> Option<Dictionary> {
+    let magic = bytes.get(..4)?;
+    if matches!(magic, [0xca, 0xfe, 0xba, 0xbe] | [0xbe, 0xba, 0xfe, 0xca]) {
+        let little = magic == [0xbe, 0xba, 0xfe, 0xca];
+        let count = read_u32(bytes, 4, little)? as usize;
+        if count > 32 { return None; }
+        for index in 0..count {
+            let base = 8 + index * 20;
+            let offset = read_u32(bytes, base + 8, little)? as usize;
+            let length = read_u32(bytes, base + 12, little)? as usize;
+            let slice = bytes.get(offset..offset.checked_add(length)?)?;
+            // Nested fat containers are not valid Mach-O slices.
+            if thin_macho_encryption(slice).is_some() {
+                if let Some(dict) = embedded_xml_entitlements(slice) { return Some(dict); }
+            }
+        }
+        return None;
+    }
+    let (little, header) = match magic {
+        [0xcf, 0xfa, 0xed, 0xfe] => (true, 32usize),
+        [0xce, 0xfa, 0xed, 0xfe] => (true, 28usize),
+        [0xfe, 0xed, 0xfa, 0xcf] => (false, 32usize),
+        [0xfe, 0xed, 0xfa, 0xce] => (false, 28usize),
+        _ => return None,
+    };
+    thin_macho_encryption(bytes)?;
+    let count = read_u32(bytes, 16, little)?;
+    let mut offset = header;
+    for _ in 0..count {
+        let command = read_u32(bytes, offset, little)?;
+        let size = read_u32(bytes, offset + 4, little)? as usize;
+        if command == 0x1d && size >= 16 {
+            let start = read_u32(bytes, offset + 8, little)? as usize;
+            let length = read_u32(bytes, offset + 12, little)? as usize;
+            let blob = bytes.get(start..start.checked_add(length)?)?;
+            if read_u32(blob, 0, false)? != 0xfade0cc0 { return None; }
+            let records = read_u32(blob, 8, false)? as usize;
+            if records > 64 { return None; }
+            for index in 0..records {
+                let kind = read_u32(blob, 12 + index * 8, false)?;
+                let record = read_u32(blob, 16 + index * 8, false)? as usize;
+                if kind != 5 || read_u32(blob, record, false)? != 0xfade7171 { continue; }
+                let length = read_u32(blob, record + 4, false)? as usize;
+                if length < 8 || length > MAX_METADATA as usize { return None; }
+                return plist::from_bytes(blob.get(record + 8..record.checked_add(length)?)?).ok();
+            }
+        }
+        offset = offset.checked_add(size)?;
+    }
+    None
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -80,6 +235,7 @@ struct ParsedIpa {
 fn plist_string(dict: &Dictionary, key: &str) -> Option<String> {
     dict.get(key)
         .and_then(Value::as_string)
+        .filter(|value| value.len() <= 4096)
         .map(ToOwned::to_owned)
 }
 
@@ -97,10 +253,10 @@ fn read_plist(archive: &mut ZipArchive<File>, path: &str) -> Result<Dictionary, 
     let mut entry = archive.by_name(path).map_err(|e| {
         AppError::Filesystem(format!("Unable to read {path} from IPA"), e.to_string())
     })?;
+    if entry.size() > MAX_METADATA { return Err(AppError::Misc(format!("Plist {path} exceeds 8 MiB."))); }
     let mut bytes = Vec::new();
-    entry.read_to_end(&mut bytes).map_err(|e| {
-        AppError::Filesystem(format!("Unable to read {path} from IPA"), e.to_string())
-    })?;
+    entry.by_ref().take(MAX_METADATA + 1).read_to_end(&mut bytes).map_err(|e| AppError::Misc(format!("Unable to read plist: {e}")))?;
+    if bytes.len() as u64 > MAX_METADATA { return Err(AppError::Misc("Plist exceeds inspection limit.".into())); }
     plist::from_bytes::<Dictionary>(&bytes)
         .map_err(|e| AppError::Misc(format!("Invalid plist at {path}: {e}")))
 }
@@ -292,18 +448,7 @@ fn executable_encryption(
         )));
     }
     let path = format!("{root}{executable}");
-    let mut entry = archive.by_name(&path).map_err(|error| {
-        AppError::Misc(format!(
-            "The app executable {path} is missing or unreadable: {error}. Obtain a complete IPA."
-        ))
-    })?;
-    let mut bytes = Vec::new();
-    entry.read_to_end(&mut bytes).map_err(|error| {
-        AppError::Filesystem(
-            format!("Unable to inspect executable {path}"),
-            error.to_string(),
-        )
-    })?;
+    let bytes = bounded_entry(archive, &path, MAX_BINARY_INSPECTION)?;
     Ok(macho_encryption_status(&bytes))
 }
 
@@ -323,6 +468,7 @@ fn parse_ipa(path: &Path) -> Result<ParsedIpa, AppError> {
     let mut archive = ZipArchive::new(file)
         .map_err(|e| AppError::Misc(format!("The selected IPA is not a valid ZIP archive: {e}")))?;
 
+    validate_archive(&mut archive)?;
     let mut main_info_path = None;
     let mut entry_names = HashSet::new();
     let mut app_roots = HashSet::new();
@@ -372,6 +518,7 @@ fn parse_ipa(path: &Path) -> Result<ParsedIpa, AppError> {
         .unwrap_or_else(|| "Unnamed App".to_string());
 
     extension_info_paths.retain(|root, _| root.starts_with(&main_root));
+    if extension_info_paths.len() > 128 { return Err(AppError::Misc("IPA exceeds the 128-extension inspection budget.".into())); }
     let mut encrypted_extensions = Vec::new();
     let mut extensions = Vec::new();
     for (extension_path, info_path) in &extension_info_paths {
@@ -408,6 +555,22 @@ fn parse_ipa(path: &Path) -> Result<ParsedIpa, AppError> {
         "Encrypted".into()
     };
 
+    let mut preflight_checks = source_checks(&mut archive, &main_root, &main_info);
+    for (root, path) in &extension_info_paths {
+        let info = read_plist(&mut archive, path)?;
+        preflight_checks.extend(source_checks(&mut archive, &format!("{root}/"), &info));
+    }
+    let nested: Vec<_> = (0..archive.len()).filter_map(|index| {
+        let entry = archive.by_index(index).ok()?;
+        let name = entry.name();
+        (name.starts_with(&main_root) && name.ends_with(".framework/Info.plist")).then(|| name.to_owned())
+    }).take(129).collect();
+    if nested.len() > 128 { return Err(AppError::Misc("IPA exceeds 128 nested framework inspection limit.".into())); }
+    for path in nested {
+        let info = read_plist(&mut archive, &path)?;
+        preflight_checks.extend(source_checks(&mut archive, path.trim_end_matches("Info.plist"), &info));
+    }
+    if preflight_checks.len() > 1024 { return Err(AppError::Misc("IPA has too many components/capabilities for bounded inspection.".into())); }
     let mut warnings = Vec::new();
     if extensions.len() >= 3 {
         warnings.push(format!(
@@ -454,6 +617,7 @@ fn parse_ipa(path: &Path) -> Result<ParsedIpa, AppError> {
             app_id_cost: extensions.len() + 1,
             extensions,
             warnings,
+            preflight: PreflightReport { schema_version: 1, checks: preflight_checks },
         },
         main_root,
         main_info_path,
@@ -517,6 +681,7 @@ pub fn extract_ipa_icon(app_path: String, destination: String) -> Result<String,
     })?;
     let mut archive = ZipArchive::new(file)
         .map_err(|error| AppError::Misc(format!("Unable to read IPA icon: {error}")))?;
+    validate_archive(&mut archive)?;
     let mut candidates = Vec::new();
 
     for index in 0..archive.len() {
@@ -559,8 +724,9 @@ pub fn extract_ipa_icon(app_path: String, destination: String) -> Result<String,
         let mut entry = archive.by_name(&name).map_err(|error| {
             AppError::Filesystem("Unable to read IPA icon".into(), error.to_string())
         })?;
+        if entry.size() > MAX_METADATA { continue; }
         let mut bytes = Vec::new();
-        entry.read_to_end(&mut bytes).map_err(|error| {
+        entry.by_ref().take(MAX_METADATA + 1).read_to_end(&mut bytes).map_err(|error| {
             AppError::Filesystem("Unable to read IPA icon".into(), error.to_string())
         })?;
         // Some real-world IPAs still contain Apple's CgBI-optimized PNGs.
@@ -700,13 +866,18 @@ pub fn prepare_ipa_in(temp_root: &Path, options: &IpaInstallOptions) -> Result<P
     let mut source = ZipArchive::new(source_file)
         .map_err(|e| AppError::Misc(format!("Unable to open IPA archive: {e}")))?;
 
-    let prepared_dir = temp_root.join("sideloom");
-    fs::create_dir_all(&prepared_dir).map_err(|e| {
+    validate_archive(&mut source)?;
+    let prepared_dir = temp_root.join(format!("sideloom-owned-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos()));
+    fs::create_dir(&prepared_dir).map_err(|e| {
         AppError::Filesystem(
             "Unable to create temporary folder".to_string(),
             e.to_string(),
         )
     })?;
+    #[cfg(unix)] {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&prepared_dir, fs::Permissions::from_mode(0o700)).map_err(|e| AppError::Misc(format!("Unable to protect temporary IPA directory: {e}")))?;
+    }
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -1333,4 +1504,34 @@ mod tests {
 
         std::fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn rejects_case_collisions_before_inspection() {
+        let path = fixture(&[("Payload/Test.app/Info.plist", b"invalid"), ("payload/test.app/info.plist", b"invalid")], "ipa");
+        let error = parse_ipa(&path).err().unwrap().to_string();
+        assert!(error.contains("case-colliding"));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn structured_entitlements_compare_contents_not_array_lengths() {
+        let first = Value::Array(vec![Value::String("group.first".into())]);
+        let second = Value::Array(vec![Value::String("group.other".into())]);
+        assert_ne!(super::entitlement_summary(&first), super::entitlement_summary(&second));
+        assert!(super::entitlement_summary(&Value::String("x".repeat(5000))).starts_with("Unverifiable:"));
+    }
+
+    #[test]
+    fn malformed_binary_has_unknown_entitlements_without_scanning_arbitrary_xml() {
+        assert!(super::embedded_xml_entitlements(b"arbitrary data \xfa\xde\x71\x71 malformed").is_none());
+        assert_eq!(super::macho_encryption_status(&[0xcf, 0xfa, 0xed, 0xfe]), "Unknown");
+    }
+
+    #[test]
+    fn plist_budget_is_enforced_before_allocation() {
+        let huge = vec![0u8; (super::MAX_METADATA + 1) as usize];
+        let path = fixture(&[("Payload/Test.app/Info.plist", &huge)], "ipa");
+        assert!(parse_ipa(&path).err().unwrap().to_string().contains("8 MiB"));
+        std::fs::remove_file(path).unwrap();
+    }
+
 }
