@@ -33,4 +33,36 @@ final class TrustDiagnosticsTests: XCTestCase {
         XCTAssertEqual(diagnostic.recovery, .detailedDiagnostics)
     }
 
+    func testNotificationPolicyRespectsDenialAndExpiryThrottle() {
+        let now = Date(timeIntervalSince1970: 200000)
+        XCTAssertFalse(NotificationCoordinator.shouldDeliver(enabled: false, authorized: true, alertsEnabled: true, lastDelivered: nil, now: now, category: .queueCompleted))
+        XCTAssertFalse(NotificationCoordinator.shouldDeliver(enabled: true, authorized: false, alertsEnabled: true, lastDelivered: nil, now: now, category: .refreshSuccess))
+        XCTAssertFalse(NotificationCoordinator.shouldDeliver(enabled: true, authorized: true, alertsEnabled: false, lastDelivered: nil, now: now, category: .refreshFailed))
+        XCTAssertFalse(NotificationCoordinator.shouldDeliver(enabled: true, authorized: true, alertsEnabled: true, lastDelivered: now.addingTimeInterval(-3600), now: now, category: .appExpiring))
+        XCTAssertTrue(NotificationCoordinator.shouldDeliver(enabled: true, authorized: true, alertsEnabled: true, lastDelivered: now.addingTimeInterval(-86401), now: now, category: .appExpiring))
+    }
+    func testDeviceHealthNeverExposesFullIdentity() {
+        XCTAssertEqual(DeviceHealthEvidence.maskedIdentity("00008120-ABCDEF123456"), "…3456")
+        XCTAssertEqual(DeviceHealthEvidence.maskedIdentity(""), "Unknown")
+    }
+    @MainActor
+    func testDiscoveryRemovalPreservesLastSeenWithUnknownCause() {
+        let model = AppModel(startupTasks: false, loadSavedState: false)
+        let device = DeviceInfo(name: "Test", id: 1, udid: "private-reference", connectionType: "USB", version: "26.0", productType: nil, deviceColor: nil)
+        let seen = Date(timeIntervalSince1970: 100)
+        model.updateDeviceHealth(discovered: [device], at: seen)
+        model.devices = [device]
+        model.updateDeviceHealth(discovered: [], at: seen.addingTimeInterval(30))
+        XCTAssertEqual(model.deviceHealth[device.udid]?.lastSeen, seen)
+        XCTAssertTrue(model.deviceHealth[device.udid]?.recentConnectionChange?.contains("unknown") == true)
+    }
+
+    func testRemovedExtensionEvidenceDoesNotBlockSelectedComponents() {
+        let removed = "Payload/Main.app/PlugIns/Widget.appex"
+        let check = SigningCheck(id: "binary.architecture", severity: .block, stage: "offline", evidence: "Mach-O", component: removed + "/Widget", observed: nil, expected: nil, resolution: nil, title: nil, explanation: nil)
+        XCTAssertFalse(check.applies(removing: [removed]))
+        XCTAssertTrue(check.applies(removing: [removed + "Other"]))
+        XCTAssertTrue(check.applies(removing: []))
+    }
+
 }

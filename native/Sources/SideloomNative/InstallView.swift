@@ -49,7 +49,8 @@ struct InstallView: View {
                         }
                         if !model.postProvisionChecks.isEmpty { SigningReadinessPanel(preflight: .init(schemaVersion: 1, checks: model.postProvisionChecks)) }
                         statusRibbon
-                        if let preflight = model.ipa?.preflight { SigningReadinessPanel(preflight: preflight) }
+                        if let preflight = model.ipa?.preflight { SigningReadinessPanel(preflight: .init(schemaVersion: preflight.schemaVersion, checks: preflight.checks.filter { $0.applies(removing: model.removedExtensions) })) }
+                        ipaPropertyInspector
                         appIDPlannerCard
                         customizationCard
                             .disabled(model.isInstalling || model.isRunningInstallQueue || model.isImportingLibrary || model.isRestoringWorkspace)
@@ -394,6 +395,35 @@ struct InstallView: View {
         }
     }
 
+    private var ipaPropertyInspector: some View {
+        GroupBox {
+            DisclosureGroup("Properties and components") {
+                if let ipa = model.ipa {
+                    Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 8) {
+                        GridRow { Text("CFBundleIdentifier"); Text(ipa.bundleId) }
+                        GridRow { Text("CFBundleShortVersionString"); Text(ipa.version) }
+                        GridRow { Text("CFBundleVersion"); Text(ipa.buildVersion) }
+                        GridRow { Text("MinimumOSVersion"); Text(ipa.minimumOsVersion ?? "Unknown") }
+                        GridRow { Text("CFBundleExecutable"); Text(ipa.executable ?? "Unknown") }
+                        GridRow { Text("Encryption"); Text(ipa.encryptionStatus) }
+                    }.font(.caption).textSelection(.enabled).padding(.top, 8)
+                    Text("Source properties are read from the archive; customization applies only when preparing or signing.").font(.caption).foregroundStyle(.secondary)
+                    ForEach(ipa.extensions) { item in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.name + (model.removedExtensions.contains(item.path) ? " · Removed" : " · Included")).font(.caption.weight(.medium))
+                            Text(item.bundleId).font(.caption.monospaced())
+                            Text(item.path).font(.caption).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if let icon = model.customIconURL {
+                        Label("Replacement icon selected: " + icon.lastPathComponent, systemImage: "photo").font(.caption)
+                    }
+                    Text("Architecture and binary evidence are available in Installation Readiness. Unknown fields are not inferred.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        } label: { Label("IPA Inspector", systemImage: "doc.text.magnifyingglass") }
+    }
+
     private var appIDPlannerCard: some View {
         let plan = model.appIDPlan
         return GroupBox {
@@ -413,6 +443,8 @@ struct InstallView: View {
                     Text("Estimate: account registrations have not been checked. All IDs are counted as new until you check with Apple.")
                         .font(.caption).foregroundStyle(.orange)
                 }
+                Text("Account: \(plan.account.isEmpty ? "Not selected" : plan.account) · Team: \(plan.teamID ?? "Unknown until Apple resource check")").font(.caption).textSelection(.enabled)
+                Text("Deleting an App ID does not guarantee that Apple immediately frees a seven-day registration slot.").font(.caption).foregroundStyle(Chrome.secondaryText)
                 Text(plan.resourceState).font(.caption).foregroundStyle(Chrome.secondaryText)
                 if let remaining = plan.remaining {
                     Text("Apple last reported \(remaining) available. \(plan.newCount > remaining ? "Remove optional extensions or wait for quota to renew." : "Availability can change before signing.")")

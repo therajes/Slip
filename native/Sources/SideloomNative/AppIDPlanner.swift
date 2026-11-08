@@ -13,6 +13,7 @@ struct AppIDPlan {
     let checkedAt: Date?
     let remaining: Int?
     let account: String
+    var teamID: String? = nil
     var resourceState: String {
         guard let checkedAt else { return "Not checked · estimates only" }
         return Date().timeIntervalSince(checkedAt) > 15 * 60 ? "Stale · refresh resource status before signing" : "Recently checked · availability may change"
@@ -51,6 +52,6 @@ extension AppModel {
         if let ipa { append(ipa: ipa, bundleID: effectiveBundleID, removed: removedExtensions) }
         return AppIDPlan(entries: entries.values.sorted { $0.bundleID < $1.bundleID },
                          checkedAt: validResources ? resourcesUpdatedAt : nil,
-                         remaining: validResources ? appIDQuota?.remaining : nil, account: selectedAccount)
+                         remaining: validResources ? appIDQuota?.remaining : nil, account: selectedAccount, teamID: team)
     }
 }

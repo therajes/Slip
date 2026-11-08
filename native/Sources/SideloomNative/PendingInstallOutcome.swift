@@ -48,13 +48,20 @@ extension AppModel {
         defer { isInspecting = false; lease.end() }
         do {
             let event = try await CoreClient().run(["reconcile-install"], input: record)
+            if event.type == "noTransfer", event.operationId == record.operationId {
+                try await PendingOutcomeStore.shared.clear(operationId: record.operationId)
+                currentStage = "Review required"
+                appendActivity("The previous operation stopped before transfer. Review its workspace before starting again.")
+                diagnostic = nil
+                return
+            }
             if event.confirmsInstallation, event.operationId == record.operationId {
                 if let ipa = record.ipa, let options = record.options, let account = record.account {
                     // Reconciliation never authenticates or installs. The empty
                     // credentials are used only to reconstruct local metadata.
                     let request = InstallRequest(email: account, password: "", anisetteServer: "", storagePath: record.storagePath,
                         device: record.device, options: options)
-                    try AutoRefreshStore.recordSuccessfulInstall(ipa: ipa, request: request,
+                    _ = try AutoRefreshStore.recordSuccessfulInstall(ipa: ipa, request: request,
                         enabled: record.renewalEnabled ?? false, profileExpiresAt: event.profileExpiresAt)
                     reloadManagedInstallations()
                 } else if let options = record.options, let account = record.account,

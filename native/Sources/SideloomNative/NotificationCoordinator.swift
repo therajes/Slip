@@ -19,12 +19,20 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate,
         guard !CommandLine.arguments.contains("--refresh-due") else { return false }
         return (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge])) ?? false
     }
+    static func shouldDeliver(enabled: Bool, authorized: Bool, alertsEnabled: Bool, lastDelivered: Date?, now: Date, category: Category) -> Bool {
+        guard enabled && authorized && alertsEnabled else { return false }
+        if category == .appExpiring, let lastDelivered, now.timeIntervalSince(lastDelivered) < 24 * 3600 { return false }
+        return true
+    }
     func deliver(_ category: Category) async {
         guard UserDefaults.standard.bool(forKey: "renewalNotificationsEnabled") else { return }
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
-        guard settings.alertSetting == .enabled else { return }
+        let deliveryKey = "notificationLastDelivered." + category.rawValue
+        let now = Date()
+        guard Self.shouldDeliver(enabled: true, authorized: true, alertsEnabled: settings.alertSetting == .enabled,
+            lastDelivered: UserDefaults.standard.object(forKey: deliveryKey) as? Date, now: now, category: category) else { return }
         let content = UNMutableNotificationContent()
         content.title = "Slip"
         content.body = switch category {
@@ -35,7 +43,12 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate,
         }
         content.categoryIdentifier = category.rawValue
         // No private account/device information or audible sound in a quiet notification.
-        try? await center.add(UNNotificationRequest(identifier: category.rawValue, content: content, trigger: nil))
+        do {
+            try await center.add(UNNotificationRequest(identifier: category.rawValue, content: content, trigger: nil))
+            UserDefaults.standard.set(now, forKey: deliveryKey)
+        } catch {
+            // Delivery failure leaves the preference unchanged and permits a later retry.
+        }
     }
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let actionIdentifier = response.actionIdentifier

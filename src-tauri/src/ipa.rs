@@ -115,9 +115,15 @@ fn source_checks(archive: &mut ZipArchive<File>, root: &str, info: &Dictionary) 
     if let Some(bytes) = binary.as_ref() {
         let status = macho_encryption_status(bytes);
         add("encryption", if status == "Encrypted" { "block" } else if status == "Decrypted" { "pass" } else { "unknown" }, Some(status), Some("Unencrypted Mach-O".into()), "Mach-O load commands", "Use a complete, legitimately decrypted IPA.");
-        let cpu = read_u32(bytes, 4, true);
-        let architecture = match cpu { Some(0x0100000c) => Some("arm64"), Some(12) => Some("arm"), Some(0x01000007) => Some("x86_64"), _ => None };
-        add("architecture", if architecture == Some("x86_64") { "block" } else if architecture.is_some() { "pass" } else { "unknown" }, architecture.map(str::to_owned), Some("Physical iPhone architecture".into()), "Mach-O CPU header (fat slices require further verification)", "Use a device build rather than an iOS Simulator archive.");
+        let architectures = macho_architectures(bytes);
+        let observed = architectures.as_ref().map(|cpus| cpus.iter().map(|cpu| match cpu {
+            0x0100000c => "arm64".into(), 12 => "arm".into(), 0x01000007 => "x86_64".into(),
+            7 => "i386".into(), value => format!("cpu-{value:x}"),
+        }).collect::<Vec<String>>().join(", "));
+        add("architecture", match architectures.as_ref() {
+            Some(cpus) if !cpus.iter().any(|cpu| matches!(cpu, 12 | 0x0100000c)) => "block",
+            Some(_) => "pass", None => "unknown",
+        }, observed, Some("Physical iPhone architecture".into()), "Validated thin/fat Mach-O slice table and load commands", "Use a device build with compatible architectures for every retained component.");
         // Read actual embedded XML entitlements from the code-signature SuperBlob.
         let entitlement = embedded_xml_entitlements(bytes);
         if let Some(entitlements) = entitlement {
@@ -146,21 +152,28 @@ fn xml_dictionary(bytes: &[u8]) -> Option<Dictionary> {
 
 fn embedded_xml_entitlements(bytes: &[u8]) -> Option<Dictionary> {
     let magic = bytes.get(..4)?;
-    if matches!(magic, [0xca, 0xfe, 0xba, 0xbe] | [0xbe, 0xba, 0xfe, 0xca]) {
-        let little = magic == [0xbe, 0xba, 0xfe, 0xca];
-        let count = read_u32(bytes, 4, little)? as usize;
-        if count > 32 { return None; }
+    if matches!(magic, [0xca,0xfe,0xba,0xbe] | [0xbe,0xba,0xfe,0xca] | [0xca,0xfe,0xba,0xbf] | [0xbf,0xba,0xfe,0xca]) {
+        macho_architectures(bytes)?;
+        let little = matches!(magic, [0xbe,0xba,0xfe,0xca] | [0xbf,0xba,0xfe,0xca]);
+        let fat64 = matches!(magic, [0xca,0xfe,0xba,0xbf] | [0xbf,0xba,0xfe,0xca]);
+        let count = read_u32(bytes,4,little)? as usize;
+        let number = |offset| -> Option<usize> {
+            if !fat64 { return usize::try_from(read_u32(bytes,offset,little)?).ok(); }
+            let raw: [u8;8] = bytes.get(offset..offset+8)?.try_into().ok()?;
+            usize::try_from(if little {u64::from_le_bytes(raw)} else {u64::from_be_bytes(raw)}).ok()
+        };
+        let mut result = None;
         for index in 0..count {
-            let base = 8 + index * 20;
-            let offset = read_u32(bytes, base + 8, little)? as usize;
-            let length = read_u32(bytes, base + 12, little)? as usize;
+            let base = 8 + index * if fat64 {32} else {20};
+            let offset = number(base+8)?;
+            let length = number(base+if fat64 {16} else {12})?;
             let slice = bytes.get(offset..offset.checked_add(length)?)?;
-            // Nested fat containers are not valid Mach-O slices.
-            if thin_macho_encryption(slice).is_some() {
-                if let Some(dict) = embedded_xml_entitlements(slice) { return Some(dict); }
-            }
+            let dict = embedded_xml_entitlements(slice)?;
+            // Different slice entitlements cannot be represented as one source promise.
+            if result.as_ref().is_some_and(|prior| prior != &dict) { return None; }
+            result = Some(dict);
         }
-        return None;
+        return result;
     }
     let (little, header) = match magic {
         [0xcf, 0xfa, 0xed, 0xfe] => (true, 32usize),
@@ -325,10 +338,51 @@ fn thin_macho_encryption(bytes: &[u8]) -> Option<bool> {
     (offset == commands_end).then_some(encrypted)
 }
 
+/// Validate fat offsets, overlaps, declared CPUs and every slice before reporting architectures.
+fn macho_architectures(bytes: &[u8]) -> Option<Vec<u32>> {
+    let magic = bytes.get(..4)?;
+    let (little, fat64) = match magic {
+        [0xca,0xfe,0xba,0xbe] => (false,false), [0xbe,0xba,0xfe,0xca] => (true,false),
+        [0xca,0xfe,0xba,0xbf] => (false,true), [0xbf,0xba,0xfe,0xca] => (true,true),
+        _ => {
+            thin_macho_encryption(bytes)?;
+            let little = matches!(magic, [0xcf,0xfa,0xed,0xfe] | [0xce,0xfa,0xed,0xfe]);
+            return Some(vec![read_u32(bytes,4,little)?]);
+        }
+    };
+    let count = read_u32(bytes,4,little)? as usize;
+    if count == 0 || count > 32 { return None; }
+    let stride = if fat64 {32} else {20};
+    let table_end = 8 + count * stride;
+    if table_end > bytes.len() { return None; }
+    let number = |offset| -> Option<usize> {
+        if !fat64 { return usize::try_from(read_u32(bytes,offset,little)?).ok(); }
+        let raw: [u8;8] = bytes.get(offset..offset+8)?.try_into().ok()?;
+        usize::try_from(if little { u64::from_le_bytes(raw) } else { u64::from_be_bytes(raw) }).ok()
+    };
+    let mut ranges = Vec::new(); let mut cpus = Vec::new();
+    for index in 0..count {
+        let base = 8 + index * stride;
+        let cpu = read_u32(bytes,base,little)?;
+        let start = number(base+8)?; let size = number(base+if fat64 {16} else {12})?;
+        let end = start.checked_add(size)?;
+        let align = read_u32(bytes,base+if fat64 {24} else {16},little)?;
+        if start < table_end || align > 31 || start % (1usize << align) != 0
+            || ranges.iter().any(|&(a,b)| start < b && end > a) { return None; }
+        let slice = bytes.get(start..end)?;
+        thin_macho_encryption(slice)?;
+        let little_slice = matches!(slice.get(..4)?, [0xcf,0xfa,0xed,0xfe] | [0xce,0xfa,0xed,0xfe]);
+        if read_u32(slice,4,little_slice)? != cpu { return None; }
+        cpus.push(cpu); ranges.push((start,end));
+    }
+    cpus.sort_unstable(); cpus.dedup(); Some(cpus)
+}
+
 fn macho_encryption_status(bytes: &[u8]) -> String {
     if let Some(encrypted) = thin_macho_encryption(bytes) {
         return if encrypted { "Encrypted" } else { "Decrypted" }.to_string();
     }
+    if macho_architectures(bytes).is_none() { return "Unknown".into(); }
     let magic = bytes.get(..4);
     let little_endian = match magic {
         Some([0xca, 0xfe, 0xba, 0xbe]) | Some([0xca, 0xfe, 0xba, 0xbf]) => false,
@@ -569,6 +623,21 @@ fn parse_ipa(path: &Path) -> Result<ParsedIpa, AppError> {
     for path in nested {
         let info = read_plist(&mut archive, &path)?;
         preflight_checks.extend(source_checks(&mut archive, path.trim_end_matches("Info.plist"), &info));
+    }
+    let architecture_rows: Vec<_> = preflight_checks.iter().filter(|check| check.id.ends_with(":architecture")).cloned().collect();
+    if let Some(main) = architecture_rows.first().and_then(|check| check.observed.as_deref()) {
+        let main_cpus: HashSet<_> = main.split(", ").collect();
+        for component in architecture_rows.iter().skip(1) {
+            let compatible = component.observed.as_ref().map(|value| {
+                let cpus: HashSet<_> = value.split(", ").collect();
+                main_cpus.iter().filter(|cpu| matches!(**cpu, "arm" | "arm64")).all(|cpu| cpus.contains(cpu))
+            });
+            preflight_checks.push(PreflightCheck { id: format!("{}:architecture-alignment", component.component),
+                severity: match compatible { Some(true) => "pass", Some(false) => "block", None => "unknown" }.into(),
+                stage: "offlineAnalysis".into(), component: component.component.clone(), observed: component.observed.clone(),
+                expected: Some(main.into()), evidence: "Main executable versus nested component CPU slices".into(),
+                resolution: "Obtain an IPA whose retained components include the main executable's device architectures.".into() });
+        }
     }
     if preflight_checks.len() > 1024 { return Err(AppError::Misc("IPA has too many components/capabilities for bounded inspection.".into())); }
     let mut warnings = Vec::new();
@@ -1199,6 +1268,36 @@ mod tests {
         }
         zip.finish().unwrap();
         path
+    }
+
+    fn thin_fixture(cpu: u32) -> Vec<u8> {
+        let mut bytes = vec![0u8; 32];
+        bytes[..4].copy_from_slice(&[0xcf,0xfa,0xed,0xfe]);
+        bytes[4..8].copy_from_slice(&cpu.to_le_bytes()); bytes
+    }
+    #[test]
+    fn fat_architectures_reject_overlap_and_cpu_mismatch() {
+        let thin = thin_fixture(0x0100000c);
+        let mut fat = vec![0u8; 28];
+        fat[..4].copy_from_slice(&[0xca,0xfe,0xba,0xbe]);
+        fat[4..8].copy_from_slice(&1u32.to_be_bytes());
+        fat[8..12].copy_from_slice(&0x0100000cu32.to_be_bytes());
+        fat[16..20].copy_from_slice(&28u32.to_be_bytes());
+        fat[20..24].copy_from_slice(&32u32.to_be_bytes()); fat.extend(thin);
+        assert_eq!(super::macho_architectures(&fat), Some(vec![0x0100000c]));
+        fat[8..12].copy_from_slice(&7u32.to_be_bytes());
+        assert!(super::macho_architectures(&fat).is_none());
+        fat[16..20].copy_from_slice(&8u32.to_be_bytes());
+        assert!(super::macho_architectures(&fat).is_none());
+    }
+    #[test]
+    fn malformed_headers_are_bounded_for_arbitrary_inputs() {
+        for length in 0..512 {
+            let mut bytes = vec![0xff; length];
+            if length >= 4 { bytes[..4].copy_from_slice(&[0xca,0xfe,0xba,0xbf]); }
+            assert!(super::macho_architectures(&bytes).is_none());
+        }
+        assert_eq!(super::macho_architectures(&thin_fixture(0x01000007)), Some(vec![0x01000007]));
     }
 
     #[test]

@@ -8,6 +8,14 @@ use serde::ser::{SerializeStruct, Serializer};
 #[strum(serialize_all = "snake_case")]
 pub enum AppError {
     #[error("{0}")]
+    InvalidArchive(String),
+    #[error("{0}")]
+    Encrypted(String),
+    #[error("{0}")]
+    EntitlementUnsupported(String),
+    #[error("{0}")]
+    SourceMissing(String),
+    #[error("{0}")]
     MaxApps(String),
     #[error("{0}")]
     NotEnoughAppIds(String),
@@ -61,6 +69,7 @@ impl AppError {
     /// the raw chain is kept in `message` for the "More Details" panel.
     pub fn human_message(&self) -> String {
         match self {
+            AppError::InvalidArchive(message) | AppError::Encrypted(message) | AppError::EntitlementUnsupported(message) | AppError::SourceMissing(message) => message.clone(),
             AppError::NotLoggedIn => {
                 "You need to sign in with your Apple Account before installing.".into()
             }
@@ -269,6 +278,10 @@ impl From<Report> for AppError {
 impl AppError {
     pub fn diagnostic_payload(&self) -> serde_json::Value {
         let (code, phase, retryable, recovery) = match self {
+            Self::InvalidArchive(_) => ("ipa.invalid_archive", "inspect", false, "locateIPA"),
+            Self::Encrypted(_) => ("ipa.encrypted", "inspect", false, "locateIPA"),
+            Self::EntitlementUnsupported(_) => ("signing.entitlement_unsupported", "sign", false, "reviewEntitlements"),
+            Self::SourceMissing(_) => ("refresh.source_missing", "inspect", false, "locateIPA"),
             Self::Canceled(_) => ("operation.cancelled", "operation", false, "detailedDiagnostics"),
             Self::NotEnoughAppIds(_) | Self::MaxApps(_) => ("account.app_id_capacity", "account", false, "refreshResources"),
             Self::Auth(_) | Self::NotLoggedIn | Self::AccountLocked(_) | Self::Underage(_) | Self::Anisette(_) => ("authentication.interaction_required", "authenticate", false, "openAccounts"),
@@ -278,5 +291,23 @@ impl AppError {
             _ => ("operation.unknown", "operation", false, "detailedDiagnostics"),
         };
         serde_json::json!({"schemaVersion":1,"code":code,"phase":phase,"severity":"error","retryable":retryable,"recovery":recovery})
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_boundary_tests {
+    use super::*;
+    #[test]
+    fn originating_categories_do_not_depend_on_message_text() {
+        for (error, expected) in [
+            (AppError::InvalidArchive("arbitrary private context".into()), "ipa.invalid_archive"),
+            (AppError::Encrypted("arbitrary".into()), "ipa.encrypted"),
+            (AppError::EntitlementUnsupported("arbitrary".into()), "signing.entitlement_unsupported"),
+            (AppError::SourceMissing("arbitrary".into()), "refresh.source_missing"),
+        ] {
+            let payload = error.diagnostic_payload();
+            assert_eq!(payload["code"], expected);
+            assert!(!payload.to_string().contains("arbitrary"));
+        }
     }
 }

@@ -34,12 +34,7 @@ enum SourceFeedParser {
     static func secureURL(_ value: String) -> URL? {
         guard let parts = URLComponents(string: value), parts.scheme?.lowercased() == "https", parts.host?.isEmpty == false,
               parts.user == nil, parts.password == nil else { return nil }
-        let host = (parts.host ?? "").lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        guard host != "localhost", !host.hasSuffix(".localhost"), !host.hasSuffix(".local"),
-              host != "::1", !host.hasPrefix("fe80:"), !(host.contains(":") && (host.hasPrefix("fc") || host.hasPrefix("fd"))),
-              !host.hasPrefix("127."), !host.hasPrefix("10."), !host.hasPrefix("192.168."), !host.hasPrefix("169.254."), host != "0.0.0.0" else { return nil }
-        let octets = host.split(separator: ".").compactMap { Int($0) }
-        if octets.count == 4 && octets[0] == 172 && (16...31).contains(octets[1]) { return nil }
+        guard NetworkEndpointPolicy.publicHost(parts.host ?? "") else { return nil }
         return parts.url
     }
     static func sourceURL(_ input: String, github: Bool) throws -> URL {
@@ -87,13 +82,19 @@ enum SourceFeedParser {
 private final class FeedRedirectPolicy: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
-        completionHandler(request.url.flatMap { SourceFeedParser.secureURL($0.absoluteString) } == nil ? nil : request)
+        guard task.countOfBytesReceived <= 4 * 1024 * 1024,
+              let url = request.url, SourceFeedParser.secureURL(url.absoluteString) != nil,
+              let host = url.host else { completionHandler(nil); return }
+        Task { completionHandler(await NetworkEndpointPolicy.resolvesPublicly(host) ? request : nil) }
     }
 }
 
 struct SourceFeedClient: Sendable {
     func releases(source: String, github: Bool, bundleID: String) async throws -> [AppUpdateRelease] {
         let url = try SourceFeedParser.sourceURL(source, github: github)
+        guard let host = url.host, await NetworkEndpointPolicy.resolvesPublicly(host) else {
+            throw SideloomError.message("The source must resolve to a public internet address.")
+        }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil; configuration.urlCredentialStorage = nil
         configuration.timeoutIntervalForRequest = 30; configuration.timeoutIntervalForResource = 60

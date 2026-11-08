@@ -37,6 +37,7 @@ struct AccountsView: View {
                 savedAccounts
                 authenticationSource
                 accountResources
+                DeviceHealthPanel().environmentObject(model)
                 addAccount.id("signInForm")
 
 

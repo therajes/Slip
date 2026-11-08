@@ -27,17 +27,21 @@ struct DiagnosticRecoveryCard: View {
 
 struct DeviceHealthPanel: View {
     @EnvironmentObject private var model: AppModel
-    @State private var lastChecked: Date?
     var body: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 8) {
                 if let device = model.selectedDevice {
                     Text("\(device.displayName) · iOS \(device.version) · \(device.connectionType)")
-                    Text("Device reference: …\(device.udid.suffix(4))").font(.caption.monospaced())
+                    Text("Device reference: \(DeviceHealthEvidence.maskedIdentity(device.udid)) · scoped to this iPhone").font(.caption.monospaced())
+                    if let evidence = model.deviceHealth[device.udid] {
+                        if let seen = evidence.lastSeen { Text("Last seen: \(seen.formatted())").font(.caption) }
+                        if let check = evidence.lastCheck { Text("Last discovery check: \(check.formatted())").font(.caption) }
+                        if let change = evidence.recentConnectionChange { Text(change).font(.caption).foregroundStyle(.secondary) }
+                    }
                     Text("Discovery confirms reachability only. Pairing, trust and Developer Mode: Unknown until an operation verifies them.")
                 } else { Text("No selected iPhone. Connection, pairing and trust: Unknown.") }
-                if let lastChecked { Text("Last connection check: \(lastChecked.formatted())").font(.caption) }
-                Button("Retest Connection") { Task { await model.refreshDevices(); lastChecked = Date() } }.disabled(model.workspaceIsBusy)
+                Button("Retest Connection") { Task { await model.refreshDevices() } }.disabled(model.workspaceIsBusy)
+                Text("Developer Mode: Settings → Privacy & Security → Developer Mode on the iPhone. This is physical device health; Apple Account status is shown separately in Accounts.").font(.caption).foregroundStyle(.secondary)
                 Text("For pairing trouble, unlock the iPhone, connect USB and review Trust This Computer. Slip does not reset pairing records.").font(.caption).foregroundStyle(.secondary)
             }.font(.callout).padding(.vertical, 8)
         } label: { Label("Device Health & Diagnostics", systemImage: "iphone.gen3.radiowaves.left.and.right") }

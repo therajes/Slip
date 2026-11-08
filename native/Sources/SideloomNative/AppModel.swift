@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 final class AppModel: ObservableObject {
     @Published var devices: [DeviceInfo] = []
+    @Published var deviceHealth: [String: DeviceHealthEvidence] = [:]
     @Published var selectedDevice: DeviceInfo? {
         didSet { deviceSelectionDidChange(from: oldValue); scheduleWorkspacePersistence() }
     }
@@ -540,6 +541,7 @@ final class AppModel: ObservableObject {
         do {
             let event = try await core.run(["devices"])
             let discovered = event.devices ?? []
+            updateDeviceHealth(discovered: discovered)
             if devices != discovered { devices = discovered }
             let selection: DeviceInfo?
             if let current = selectedDevice,

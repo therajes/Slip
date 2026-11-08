@@ -35,6 +35,7 @@ enum IPADownloadPolicy {
         guard let parts = URLComponents(string: input.trimmingCharacters(in: .whitespacesAndNewlines)),
               ["http", "https"].contains(parts.scheme?.lowercased() ?? ""),
               parts.host?.isEmpty == false, parts.user == nil, parts.password == nil else { return nil }
+        if parts.scheme?.lowercased() == "https", !NetworkEndpointPolicy.publicHost(parts.host ?? "") { return nil }
         return parts.url
     }
     static func retryDelay(_ error: Error, attempt: Int) -> Int? {
@@ -79,6 +80,10 @@ final class IPADownloadControl: @unchecked Sendable {
 struct IPAURLDownloadService: Sendable {
     func download(_ url: URL, to directory: URL, control: IPADownloadControl? = nil, resume: PausedIPADownload? = nil,
                   progress: @escaping @Sendable (IPADownloadProgress) -> Void) async throws -> URL {
+        guard IPADownloadPolicy.url(url.absoluteString) != nil else { throw IPADownloadError.invalidURL }
+        if url.scheme?.lowercased() == "https" {
+            guard let host = url.host, await NetworkEndpointPolicy.resolvesPublicly(host) else { throw IPADownloadError.invalidURL }
+        }
         if let resume {
             var request = URLRequest(url: url)
             request.httpMethod = "HEAD"
@@ -223,7 +228,9 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
         guard let redirected = request.url, IPADownloadPolicy.url(redirected.absoluteString) != nil,
               !(response.url?.scheme?.lowercased() == "https" && redirected.scheme?.lowercased() == "http") else { completionHandler(nil); return }
-        completionHandler(request)
+        if request.url?.scheme?.lowercased() == "https", let host = request.url?.host {
+            Task { completionHandler(await NetworkEndpointPolicy.resolvesPublicly(host) ? request : nil) }
+        } else { completionHandler(request) }
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
@@ -261,6 +268,8 @@ private final class DownloadValidationRedirectPolicy: NSObject, URLSessionTaskDe
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
         guard let url = request.url, IPADownloadPolicy.url(url.absoluteString) != nil,
               !(response.url?.scheme == "https" && url.scheme == "http") else { completionHandler(nil); return }
-        completionHandler(request)
+        if request.url?.scheme?.lowercased() == "https", let host = request.url?.host {
+            Task { completionHandler(await NetworkEndpointPolicy.resolvesPublicly(host) ? request : nil) }
+        } else { completionHandler(request) }
     }
 }

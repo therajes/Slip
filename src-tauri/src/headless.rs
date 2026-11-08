@@ -218,13 +218,15 @@ fn get_machine_name() -> String {
 }
 
 async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> {
-    let ipa = inspect_ipa(request.options.app_path.clone())?;
+    let ipa = inspect_ipa(request.options.app_path.clone()).map_err(|e| AppError::InvalidArchive(e.human_message()))?;
     if ipa.encryption_status == "Encrypted" {
-        return Err(AppError::Misc("This IPA contains an encrypted App Store executable. Choose a decrypted IPA that you are authorized to install; encrypted apps cannot be re-signed.".into()));
+        return Err(AppError::Encrypted("This IPA contains an encrypted App Store executable. Choose a decrypted IPA that you are authorized to install; encrypted apps cannot be re-signed.".into()));
     }
     let mut job = new_install_job(&request)?;
     save_install_job(&request.storage_path, &job)?;
     emit(json!({"type":"operationStarted","protocolVersion":2,"operationId":job["operationId"],"sourceSHA256":job["sourceSHA256"]}));
+    job["phase"] = json!("authenticate");
+    save_install_job(&request.storage_path, &job)?;
     emit_progress("account", 0.0, "Authenticating with Apple");
 
     let make_max_certs = |cert_input: Input| {
@@ -315,6 +317,8 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             .map_err(AppError::from)?;
 
         let signing_team_id = team.team_id.clone();
+        job["teamId"] = json!(signing_team_id);
+        save_install_job(&request.storage_path, &job)?;
         let (signed_app, _) = sideloader
             .sign_app(
                 prepared.clone(),
@@ -332,6 +336,8 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             .ok_or_else(|| AppError::Misc("The signed app has no bundle identifier.".into()))?.to_owned();
         job["expectedBundleId"] = json!(signed_bundle);
         job["teamId"] = json!(signing_team_id);
+        job["expectedVersion"] = json!(signed_info.as_dictionary().and_then(|v| v.get("CFBundleShortVersionString")).and_then(plist::Value::as_string));
+        job["expectedBuild"] = json!(signed_info.as_dictionary().and_then(|v| v.get("CFBundleVersion")).and_then(plist::Value::as_string));
         let mut checks = final_profile_checks(&signed_app, &signing_team_id)?;
         let differences = source_capability_differences(&request.options.app_path, &signed_app);
         let capabilities_changed = !differences.is_empty() || checks.iter().any(|check| check["severity"] == "unknown");
@@ -342,6 +348,7 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             let response: PromptResponse = read_json(&input)?;
             if response.acknowledge_capabilities != Some(true) { return Err(AppError::Canceled("Capability changes were not accepted".into())); }
         }
+        job["inventoryBefore"] = verify_expected_install(&request.device, &signed_bundle).await;
         job["phase"] = json!("transfer");
         save_install_job(&request.storage_path, &job)?;
         profile_expires_at = signed_profile_expiry(&signed_app);
@@ -357,20 +364,17 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
             "sideloom-native-{}-{unique}.ipa",
             std::process::id()
         ));
-        let mut install_result = Err(AppError::Misc("Installation did not start".into()));
-        // A missed transfer acknowledgement must never trigger a duplicate install.
-        match get_provider(&request.device).await {
-            Ok(provider) => {
-                install_result = install_signed_app_fast_with_progress(&provider, &signed_app, &optimized,
-                    |progress| emit_progress("install", progress, "Installing on selected iPhone")).await;
-            }
-            Err(error) => install_result = Err(error),
-        }
+        let install_result = match get_provider(&request.device).await {
+            Ok(provider) => install_signed_app_fast_with_progress(&provider, &signed_app, &optimized,
+                |progress| emit_progress("install", progress, "Installing on selected iPhone")).await,
+            Err(error) => Err(error),
+        };
+        job["installAcknowledged"] = json!(install_result.is_ok());
         job["phase"] = json!("verify");
         save_install_job(&request.storage_path, &job)?;
         let verification = verify_expected_install(&request.device, &signed_bundle).await;
         job["verificationStatus"] = verification.clone();
-        if !transfer_confirmed(install_result.is_ok(), &verification) { job["phase"] = json!("verificationPending"); }
+        if !operation_evidence_confirmed(&job, &verification) { job["phase"] = json!("verificationPending"); }
         save_install_job(&request.storage_path, &job)?;
         let _ = std::fs::remove_dir_all(&signed_app);
         let _ = std::fs::remove_file(&optimized);
@@ -405,8 +409,8 @@ fn signed_profile_expiry(app: &std::path::Path) -> Option<f64> {
             let value = if path.is_dir() {
                 signed_profile_expiry(&path)
             } else if path.file_name().and_then(|name| name.to_str()) == Some("embedded.mobileprovision") {
-                std::process::Command::new("/usr/bin/security")
-                    .args(["cms", "-D", "-i"]).arg(&path).output().ok()
+                crate::inspection_process::bounded_output(std::process::Command::new("/usr/bin/security")
+                    .args(["cms", "-D", "-i"]).arg(&path)).ok()
                     .filter(|output| output.status.success())
                     .and_then(|output| plist::Value::from_reader(std::io::Cursor::new(output.stdout)).ok())
                     .and_then(|value| value.as_dictionary()?.get("ExpirationDate")?.as_date())
@@ -1319,9 +1323,13 @@ pub async fn run() -> Result<(), AppError> {
             if data.len() > 1024 * 1024 { return Err(AppError::Misc("Invalid operation record.".into())); }
             let mut job: Value = serde_json::from_slice(&data).map_err(|_| AppError::Misc("Invalid operation record.".into()))?;
             if job["targetUDID"].as_str() != Some(&request.device.udid) { return Err(AppError::Misc("Select the iPhone originally targeted by this operation.".into())); }
+            if safely_before_transfer(&job) {
+                emit(json!({"type":"noTransfer","protocolVersion":2,"operationId":request.operation_id,"message":"This operation stopped before transfer. Review the app before starting another installation."}));
+                return Ok(());
+            }
             let bundle = job["expectedBundleId"].as_str().ok_or_else(|| AppError::Misc("This operation was interrupted before a signed identity was available. Review it before retrying.".into()))?.to_owned();
             let outcome = verify_expected_install(&request.device, &bundle).await;
-            let verified = outcome["status"] == "verified";
+            let verified = operation_evidence_confirmed(&job, &outcome);
             job["verificationStatus"] = outcome.clone();
             job["phase"] = json!(if verified {"confirmed"} else {"verificationPending"});
             save_install_job(&request.storage_path, &job)?;
@@ -1436,12 +1444,12 @@ fn install_job_path(storage: &str, id: &str) -> Result<PathBuf, AppError> {
 fn new_install_job(request: &InstallRequest) -> Result<Value, AppError> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
-    let mut file = std::fs::File::open(&request.options.app_path).map_err(|_| AppError::Misc("The source IPA is unavailable.".into()))?;
+    let mut file = std::fs::File::open(&request.options.app_path).map_err(|_| AppError::SourceMissing("The source IPA is unavailable.".into()))?;
     let mut digest = Sha256::new(); let mut bytes = [0u8; 65536];
     loop { let n = file.read(&mut bytes).map_err(|_| AppError::Misc("The source IPA could not be hashed.".into()))?; if n == 0 { break; } digest.update(&bytes[..n]); }
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     let id = Sha256::digest(format!("{}-{}", std::process::id(), now.as_nanos()).as_bytes()).iter().map(|b| format!("{b:02x}")).collect::<String>();
-    Ok(json!({"schemaVersion":1,"operationId":id,"targetUDID":request.device.udid,"sourceSHA256":digest.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>(),"options":request.options,"createdAt":now.as_secs(),"phase":"inspect"}))
+    Ok(json!({"schemaVersion":1,"operationId":id,"targetUDID":request.device.udid,"sourceSHA256":digest.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>(),"options":request.options,"accountReference":Sha256::digest(request.email.trim().to_lowercase().as_bytes()).iter().map(|b| format!("{b:02x}")).collect::<String>(),"createdAt":now.as_secs(),"phase":"inspect"}))
 }
 fn save_install_job(storage: &str, job: &Value) -> Result<(), AppError> {
     let id = job["operationId"].as_str().ok_or_else(|| AppError::Misc("Invalid operation record.".into()))?;
@@ -1454,7 +1462,9 @@ fn save_install_job(storage: &str, job: &Value) -> Result<(), AppError> {
     let mut options = std::fs::OpenOptions::new(); options.write(true).create_new(true);
     #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
     let mut file = options.open(&temporary).map_err(|_| AppError::Misc("Unable to save the operation journal.".into()))?;
-    let bytes = serde_json::to_vec(job).map_err(|_| AppError::Misc("Invalid operation record.".into()))?;
+    let mut stamped = job.clone();
+    stamped["updatedAt"] = json!(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs());
+    let bytes = serde_json::to_vec(&stamped).map_err(|_| AppError::Misc("Invalid operation record.".into()))?;
     file.write_all(&bytes).and_then(|_| file.sync_all()).map_err(|_| AppError::Misc("Unable to save the operation journal.".into()))?;
     std::fs::rename(&temporary, &path).map_err(|_| AppError::Misc("Unable to commit the operation journal.".into()))
 }
@@ -1469,19 +1479,21 @@ async fn verify_expected_install(device: &DeviceInfo, expected: &str) -> Value {
     match result {
         Ok(Ok(Some(value))) => {
             let version = value.as_dictionary().and_then(|v| v.get("CFBundleShortVersionString")).and_then(plist::Value::as_string);
-            json!({"status":"verified","bundleId":expected,"version":version})
+            let build = value.as_dictionary().and_then(|v| v.get("CFBundleVersion")).and_then(plist::Value::as_string);
+            json!({"status":"verified","bundleId":expected,"version":version,"build":build})
         }
+        Ok(Ok(None)) => json!({"status":"absent"}),
         _ => json!({"status":"pending"}),
     }
 }
 
 fn decoded_profile(path: &std::path::Path) -> Option<plist::Dictionary> {
-    let output = std::process::Command::new("/usr/bin/security").args(["cms", "-D", "-i"]).arg(path).output().ok()?;
+    let output = crate::inspection_process::bounded_output(std::process::Command::new("/usr/bin/security").args(["cms", "-D", "-i"]).arg(path)).ok()?;
     if !output.status.success() || output.stdout.len() > 4 * 1024 * 1024 { return None; }
     plist::Value::from_reader(std::io::Cursor::new(output.stdout)).ok()?.into_dictionary()
 }
 fn signed_entitlements(path: &std::path::Path) -> Option<plist::Dictionary> {
-    let output = std::process::Command::new("/usr/bin/codesign").args(["-d", "--entitlements", "-"]).arg(path).output().ok()?;
+    let output = crate::inspection_process::bounded_output(std::process::Command::new("/usr/bin/codesign").args(["-d", "--entitlements", "-"]).arg(path)).ok()?;
     if !output.status.success() || output.stdout.len() > 1024 * 1024 { return None; }
     plist::Value::from_reader(std::io::Cursor::new(output.stdout)).ok()?.into_dictionary()
 }
@@ -1528,11 +1540,11 @@ fn final_profile_checks(app: &std::path::Path, team: &str) -> Result<Vec<Value>,
         let identity = format!("{team}.{bundle}");
         let blocked = allowed.is_some_and(|p| !identity_authorized(p, &identity)) || profile_team.is_some_and(|v| v != team);
         checks.push(json!({"id":format!("{bundle}:profile.identity"),"severity":if blocked {"block"} else if allowed.is_some() {"pass"} else {"unknown"},"stage":"post-provision","component":bundle,"evidence":"newly generated embedded profile","observed":allowed,"expected":identity,"resolution":"Review the selected signing team and bundle identity."}));
-        if blocked { return Err(AppError::Misc("The newly issued provisioning profile does not authorize the signed app's team and identity. Transfer was blocked.".into())); }
+        if blocked { return Err(AppError::EntitlementUnsupported("The newly issued provisioning profile does not authorize the signed app's team and identity. Transfer was blocked.".into())); }
         if let Some(signed) = signed_entitlements(&path) {
             if let Some(permitted) = entitlements {
                 if !signed_entitlements_authorized(&signed, permitted) {
-                    return Err(AppError::Misc("The newly issued profile does not authorize the signed capabilities. Transfer was blocked; review entitlement differences.".into()));
+                    return Err(AppError::EntitlementUnsupported("The newly issued profile does not authorize the signed capabilities. Transfer was blocked; review entitlement differences.".into()));
                 }
                 checks.push(json!({"id":format!("{bundle}:profile.capabilities"),"severity":"pass","stage":"post-provision","component":bundle,"evidence":"Signed executable entitlements compared with newly generated profile","resolution":"Profile authorization does not guarantee runtime functionality."}));
             } else {
@@ -1572,16 +1584,48 @@ mod installation_verification_tests {
     }
 }
 
-fn transfer_confirmed(transfer_success: bool, inventory: &Value) -> bool {
-    transfer_success && inventory["status"] == "verified"
+fn safely_before_transfer(job: &Value) -> bool {
+    matches!(job["phase"].as_str(), Some("inspect" | "authenticate" | "prepare" | "sign"))
+}
+fn operation_evidence_confirmed(job: &Value, inventory: &Value) -> bool {
+    if inventory["status"] != "verified" { return false; }
+    // Presence alone cannot prove an update. Compare every reliable signed
+    // version field, and reject contradictory device inventory even with an ACK.
+    for (expected, observed) in [("expectedVersion", "version"), ("expectedBuild", "build")] {
+        if let Some(wanted) = job[expected].as_str() {
+            if inventory[observed].as_str() != Some(wanted) { return false; }
+        }
+    }
+    if job["installAcknowledged"] == true { return true; }
+    let before = &job["inventoryBefore"];
+    if before["status"] == "absent" { return true; }
+    if before["status"] != "verified" { return false; }
+    // A missing ACK for a same-version refresh is unresolved: inventory cannot
+    // establish whether the new signing profile actually reached the phone.
+    [("expectedVersion", "version"), ("expectedBuild", "build")].iter().any(|(expected, observed)| {
+        job[*expected].as_str().is_some() && before[*observed].as_str().is_some()
+            && before[*observed] != inventory[*observed]
+    })
 }
 #[cfg(test)]
 mod outcome_boundary_tests {
     use super::*;
-    #[test] fn a_preexisting_app_cannot_turn_a_failed_transfer_into_success() {
-        assert!(!transfer_confirmed(false, &json!({"status":"verified"})));
-        assert!(!transfer_confirmed(true, &json!({"status":"pending"})));
-        assert!(transfer_confirmed(true, &json!({"status":"verified"})));
+    #[test] fn same_version_refresh_without_ack_remains_pending() {
+        let job = json!({"expectedVersion":"1","expectedBuild":"10","inventoryBefore":{"status":"verified","version":"1","build":"10"}});
+        let observed = json!({"status":"verified","version":"1","build":"10"});
+        assert!(!operation_evidence_confirmed(&job, &observed));
+        let mut acknowledged = job.clone(); acknowledged["installAcknowledged"] = json!(true);
+        assert!(operation_evidence_confirmed(&acknowledged, &observed));
+        assert!(!operation_evidence_confirmed(&acknowledged, &json!({"status":"verified","version":"1","build":"9"})));
+    }
+    #[test] fn changed_build_can_reconcile_a_missed_ack() {
+        let job = json!({"expectedVersion":"1","expectedBuild":"11","inventoryBefore":{"status":"verified","version":"1","build":"10"}});
+        assert!(operation_evidence_confirmed(&job, &json!({"status":"verified","version":"1","build":"11"})));
+        assert!(!operation_evidence_confirmed(&job, &json!({"status":"pending"})));
+    }
+    #[test] fn interruptions_only_before_transfer_are_safe_to_review_again() {
+        for phase in ["inspect", "authenticate", "prepare", "sign"] { assert!(safely_before_transfer(&json!({"phase":phase}))); }
+        for phase in ["transfer", "verify", "verificationPending", "unknown"] { assert!(!safely_before_transfer(&json!({"phase":phase}))); }
     }
 }
 

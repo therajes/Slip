@@ -21,6 +21,7 @@ mod error;
 mod fast_install;
 pub mod headless;
 mod ipa;
+mod inspection_process;
 #[cfg(feature = "tauri-ui")]
 mod logging;
 #[cfg(feature = "tauri-ui")]

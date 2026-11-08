@@ -29,3 +29,11 @@ The lead's end-of-task report records the actual command results. This document 
 Production Developer ID signing, Hardened Runtime, `notarytool`, stapling and Gatekeeper assessment are opt-in. They require a securely provisioned identity and notary keychain profile. Default local builds continue without those credentials. No release tag or GitHub Release is created by this implementation task.
 
 Potential follow-up work includes richer Apple resource freshness APIs, reliable installed-version/receipt evidence across iOS versions, and broader architecture/profile fixtures. Preliminary checks remain evidence, not a promise of successful signing or runtime behavior.
+
+## Completion follow-up
+
+Binary inspection now validates thin/fat32/fat64 slice tables and component architecture alignment. Signing inspection tools have deadlines and output budgets. Update verification compares signed version/build evidence and journal acknowledgements rather than accepting a previously installed bundle as proof of an update. Proven pre-transfer interruptions return to review without replay.
+
+Install and Accounts include Device Health evidence with masked identity and safe retest. Readiness groups stages and presents side-by-side capability evidence, excluding removed extensions. The property/component inspector uses source metadata as data. Feed and HTTPS download endpoint validation rejects private/reserved and alternate numeric addresses and prechecks DNS results.
+
+Local automated validation: 48 core Rust, 20 vendored authentication and 96 Swift tests passed. Physical-device and production credential checks remain separately unverified.
