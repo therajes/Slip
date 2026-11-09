@@ -98,6 +98,7 @@ struct PromptResponse {
     resend: Option<bool>,
     number_id: Option<u32>,
     send_to_devices: Option<bool>,
+    #[serde(alias = "acknowledge_capabilities")]
     acknowledge_capabilities: Option<bool>,
 }
 

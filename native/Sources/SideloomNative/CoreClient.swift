@@ -345,10 +345,10 @@ extension CoreClient {
 }
 
 private struct CapabilityAcknowledgement: Encodable {
-    let acknowledge_capabilities: Bool
+    let acknowledgeCapabilities: Bool
 }
 extension CoreClient {
     func submitCapabilityAcknowledgement(_ accepted: Bool) throws {
-        try send(CapabilityAcknowledgement(acknowledge_capabilities: accepted))
+        try send(CapabilityAcknowledgement(acknowledgeCapabilities: accepted))
     }
 }

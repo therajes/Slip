@@ -15,6 +15,12 @@ if [[ -z "$CARGO_BIN" ]]; then
     exit 1
 fi
 
+SWIFT_BIN=${SWIFT_BIN:-$(xcrun --find swift 2>/dev/null || command -v swift || true)}
+if [[ -z "$SWIFT_BIN" ]]; then
+    print -u2 "Swift is required. Install Xcode command line tools and try again."
+    exit 1
+fi
+
 SIDELOOM_SIGN_IDENTITY=${SIDELOOM_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F\" '/Apple Development/ { print $2; exit }')}
 if [[ -z "$SIDELOOM_SIGN_IDENTITY" ]] || ! security find-identity -v -p codesigning | grep -Fq "$SIDELOOM_SIGN_IDENTITY"; then
     SIDELOOM_SIGN_IDENTITY="-"
@@ -29,9 +35,9 @@ fi
 # SwiftPM's Xcode build path can otherwise stamp the deployment target as
 # the SDK version. Record the actual SDK independently of the macOS 26 minimum.
 NATIVE_SDK_VERSION=$(xcrun --sdk macosx --show-sdk-version)
-swift build --package-path "$NATIVE_DIR" -c release --arch arm64 \
+"$SWIFT_BIN" build --package-path "$NATIVE_DIR" -c release --arch arm64 \
     -Xlinker -platform_version -Xlinker macos -Xlinker 26.0 -Xlinker "$NATIVE_SDK_VERSION"
-SWIFT_BIN_DIR=$(swift build --package-path "$NATIVE_DIR" -c release --arch arm64 --show-bin-path)
+SWIFT_BIN_DIR=$("$SWIFT_BIN" build --package-path "$NATIVE_DIR" -c release --arch arm64 --show-bin-path)
 
 if [[ -d "$APP_DIR" ]]; then
     rm -rf "$APP_DIR"

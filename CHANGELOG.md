@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.9.1 — 2026-11-09
+
+- Fix capability review acknowledgement: ensure accepted limitations continue installation instead of falsely reporting cancellation.
+- Accept both camelCase and snake_case capability prompt responses in core protocol.
+- Use Xcode Swift toolchain resolution during native application build.
+
+
 ## 2.9.0 — 2026-11-08
 
 - Add opt-in source catalogs, provenance, conditional offline cache and reviewed downloads.
