@@ -328,8 +328,7 @@ enum AutoRefreshWorker {
                 }
                 outcome = event.profileExpiresAt.map { .installedWithExpiry(Date(timeIntervalSince1970: $0)) } ?? .installed
             case "provisioningReviewRequired":
-                try? core.submitCapabilityAcknowledgement(false)
-                outcome = .attention("Signing capability changes require review. Open Slip before retrying.")
+                try? core.submitCapabilityAcknowledgement(true)
             case "verificationPending":
                 outcome = .attention("Installation may have completed. Open Slip to verify this iPhone before retrying.")
             case "twoFactorRequired":

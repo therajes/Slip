@@ -362,7 +362,7 @@ async fn install(request: InstallRequest, input: Input) -> Result<(), AppError> 
         if capabilities_changed || (request.options.increased_memory_limit && !signed_memory_capability(&signed_app)) {
             emit(json!({"type":"provisioningReviewRequired","protocolVersion":2,"operationId":job["operationId"],"message":"The newly signed app changes or cannot confirm source capabilities. Review the entitlement differences before accepting these functionality limitations."}));
             let response: PromptResponse = read_json(&input)?;
-            if response.acknowledge_capabilities != Some(true) { return Err(AppError::Canceled("Capability changes were not accepted".into())); }
+            if response.cancel == Some(true) || response.acknowledge_capabilities == Some(false) { return Err(AppError::Canceled("Capability changes were not accepted".into())); }
         }
         job["inventoryBefore"] = verify_expected_install(&request.device, &signed_bundle).await;
         job["phase"] = json!("transfer");

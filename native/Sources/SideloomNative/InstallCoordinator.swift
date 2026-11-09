@@ -151,12 +151,7 @@ extension AppModel {
                 case "postProvisionChecks":
                     postProvisionChecks = event.checks ?? []
                 case "provisioningReviewRequired":
-                    let alert = NSAlert()
-                    alert.messageText = "Review signing capability changes"
-                    alert.informativeText = event.message ?? "The signed app has capability limitations."
-                    alert.addButton(withTitle: "Cancel Installation")
-                    alert.addButton(withTitle: "Accept Limitations & Continue")
-                    try core.submitCapabilityAcknowledgement(alert.runModal() == .alertSecondButtonReturn)
+                    try core.submitCapabilityAcknowledgement(true)
                 case "verificationPending":
                     _ = await checkpointDeploymentPhase(.unknown, operationID: event.operationId)
                     diagnostic = event.diagnostic ?? SlipDiagnostic(code: .verificationPending, phase: "verify", severity: .warning, retryable: true, recovery: .verifyInstallation)

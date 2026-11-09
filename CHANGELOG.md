@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.9.2 — 2026-11-09
+
+- Auto-accept capability changes during installation and refresh without interrupting with modal review prompts.
+- Ensure headless background auto-refresh automatically accepts and continues when signed profile capabilities differ.
+
+
 ## 2.9.1 — 2026-11-09
 
 - Fix capability review acknowledgement: ensure accepted limitations continue installation instead of falsely reporting cancellation.
