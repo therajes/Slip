@@ -730,7 +730,7 @@ private struct CachedIPAIcon: View {
     }
 }
 
-private struct DownloadProgressContent: View {
+struct DownloadProgressContent: View {
     @ObservedObject var progress: OperationProgress
     let inspecting: Bool
     let motion: Bool

@@ -17,6 +17,24 @@ struct IPADownloadProgress: Sendable {
     }
 }
 
+/// Monotonic, bounded progress publication; URLSession may report every network chunk.
+struct IPADownloadProgressClock {
+    private var reportedAt: TimeInterval?
+    private var reportedBytes: Int64 = 0
+    private var completed = false
+
+    mutating func report(total: Int64, expected: Int64, now: TimeInterval) -> Double? {
+        guard !completed else { return nil }
+        let finished = expected > 0 && total >= expected
+        if let reportedAt, now - reportedAt < 0.15 && !finished { return nil }
+        let rate = reportedAt.map { Double(max(0, total - reportedBytes)) / max(now - $0, 0.001) } ?? 0
+        reportedAt = now
+        reportedBytes = total
+        completed = finished
+        return rate
+    }
+}
+
 enum IPADownloadError: LocalizedError {
     case invalidURL, invalidArchive, http(Int, Int?)
     var errorDescription: String? {
@@ -90,6 +108,8 @@ struct IPAURLDownloadService: Sendable {
             let config = URLSessionConfiguration.ephemeral
             config.httpCookieStorage = nil
             config.urlCredentialStorage = nil
+            config.timeoutIntervalForRequest = 15
+            config.timeoutIntervalForResource = 30
             let session = URLSession(configuration: config, delegate: DownloadValidationRedirectPolicy(), delegateQueue: nil)
             defer { session.invalidateAndCancel() }
             let (_, response) = try await session.data(for: request)
@@ -131,8 +151,8 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
     private var task: URLSessionDownloadTask?
     private var cancelled = false
     private var finished = false
-    private var started = Date()
-    private var lastProgress = Date.distantPast
+    private var progressClock = IPADownloadProgressClock()
+    private var pauseRegistered = false
 
     init(url: URL, directory: URL, attempt: Int, control: IPADownloadControl?, resume: PausedIPADownload?, progress: @escaping @Sendable (IPADownloadProgress) -> Void) {
         self.control = control; self.resume = resume
@@ -145,18 +165,30 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
                 lock.lock()
                 if cancelled { lock.unlock(); continuation.resume(throwing: CancellationError()); return }
                 self.continuation = continuation
-                let config = URLSessionConfiguration.ephemeral
+                let config = URLSessionConfiguration.default
+                config.requestCachePolicy = .reloadIgnoringLocalCacheData
+                config.urlCache = nil
                 config.httpShouldSetCookies = false
                 config.httpCookieStorage = nil
                 config.urlCredentialStorage = nil
-                config.urlCache = nil
-                config.timeoutIntervalForRequest = 45
+                config.timeoutIntervalForRequest = 60
                 config.timeoutIntervalForResource = 3600
+                config.networkServiceType = .responsiveData
+                config.httpMaximumConnectionsPerHost = 16
+                config.allowsCellularAccess = true
+                config.allowsExpensiveNetworkAccess = true
+                config.allowsConstrainedNetworkAccess = true
                 let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
                 self.session = session
-                let task = resume.map { session.downloadTask(withResumeData: $0.data) } ?? session.downloadTask(with: URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+                var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+                req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+                req.setValue("application/octet-stream, application/zip, */*", forHTTPHeaderField: "Accept")
+                // IPA archives are already compressed; avoid redundant transfer decoding.
+                req.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+                req.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+                let task = resume.map { session.downloadTask(withResumeData: $0.data) } ?? session.downloadTask(with: req)
+                task.priority = URLSessionTask.highPriority
                 self.task = task
-                started = Date()
                 lock.unlock()
                 task.resume()
             }
@@ -207,30 +239,36 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         lock.lock()
-        let now = Date()
-        let report = !finished && (now.timeIntervalSince(lastProgress) >= 0.15 || totalBytesWritten == totalBytesExpectedToWrite)
-        if report { lastProgress = now }
-        let elapsed = max(now.timeIntervalSince(started), 0.1)
+        let rate = finished ? nil : progressClock.report(total: totalBytesWritten, expected: totalBytesExpectedToWrite, now: ProcessInfo.processInfo.systemUptime)
         lock.unlock()
+        guard let rate else { return }
         let response = downloadTask.response as? HTTPURLResponse
         let canPause = response?.value(forHTTPHeaderField: "Accept-Ranges")?.lowercased() == "bytes"
             && response?.value(forHTTPHeaderField: "ETag").map { !$0.hasPrefix("W/") } == true
             && response?.value(forHTTPHeaderField: "Content-Length") != nil
-        if canPause { control?.register { [weak self] in self?.pause() } }
-        if report {
-            progress(IPADownloadProgress(received: totalBytesWritten,
-                                         expected: totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil,
-                                         bytesPerSecond: Double(totalBytesWritten) / elapsed, canPause: canPause, attempt: attempt))
+        if canPause {
+            lock.lock()
+            if !pauseRegistered && !finished {
+                pauseRegistered = true
+                control?.register { [weak self] in self?.pause() }
+            }
+            lock.unlock()
         }
+        progress(IPADownloadProgress(received: totalBytesWritten,
+                                     expected: totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil,
+                                     bytesPerSecond: rate, canPause: canPause, attempt: attempt))
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
         guard let redirected = request.url, IPADownloadPolicy.url(redirected.absoluteString) != nil,
               !(response.url?.scheme?.lowercased() == "https" && redirected.scheme?.lowercased() == "http") else { completionHandler(nil); return }
+        var req = request
+        req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        req.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
         if request.url?.scheme?.lowercased() == "https", let host = request.url?.host {
-            Task { completionHandler(await NetworkEndpointPolicy.resolvesPublicly(host) ? request : nil) }
-        } else { completionHandler(request) }
+            Task { completionHandler(await NetworkEndpointPolicy.resolvesPublicly(host) ? req : nil) }
+        } else { completionHandler(req) }
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
@@ -262,6 +300,7 @@ private final class IPAFileDownload: NSObject, URLSessionDownloadDelegate, @unch
         if !pausing { finish(.failure(error ?? URLError(.badServerResponse))) }
     }
 }
+
 
 private final class DownloadValidationRedirectPolicy: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,

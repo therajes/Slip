@@ -4886,7 +4886,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "sideloom"
-version = "2.9.2"
+version = "3.0.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4895,7 +4895,6 @@ dependencies = [
  "image",
  "isideload",
  "keyring",
- "once_cell",
  "plist",
  "plist-macro",
  "reqwest",

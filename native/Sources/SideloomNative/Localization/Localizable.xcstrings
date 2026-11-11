@@ -1,0 +1,4136 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "%arg %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg %arg"
+          }
+        }
+      }
+    },
+    "%arg (%arg)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg (%arg)"
+          }
+        }
+      }
+    },
+    "%arg (⌘%arg)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg (⌘%arg)"
+          }
+        }
+      }
+    },
+    "%arg app icon": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg app icon"
+          }
+        }
+      }
+    },
+    "%arg artwork": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg artwork"
+          }
+        }
+      }
+    },
+    "%arg blocking · %arg warnings": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg blocking · %arg warnings"
+          }
+        }
+      }
+    },
+    "%arg changes": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg changes"
+          }
+        }
+      }
+    },
+    "%arg icon": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg icon"
+          }
+        }
+      }
+    },
+    "%arg in %arg managed IPAs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg in %arg managed IPAs"
+          }
+        }
+      }
+    },
+    "%arg of %arg selected": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg of %arg selected"
+          }
+        }
+      }
+    },
+    "%arg pending · Stops if an app needs attention.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg pending · Stops if an app needs attention."
+          }
+        }
+      }
+    },
+    "%arg profile picture": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg profile picture"
+          }
+        }
+      }
+    },
+    "%arg registered": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg registered"
+          }
+        }
+      }
+    },
+    "%arg · %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg · %arg"
+          }
+        }
+      }
+    },
+    "%arg · %arg · %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg · %arg · %arg"
+          }
+        }
+      }
+    },
+    "%arg · The downloaded bundle identifier must match this app. Saved choices are restored for review; installation requires a separate action.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg · The downloaded bundle identifier must match this app. Saved choices are restored for review; installation requires a separate action."
+          }
+        }
+      }
+    },
+    "%arg · iOS %arg · %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg · iOS %arg · %arg"
+          }
+        }
+      }
+    },
+    "%arg · macOS %arg (%arg)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg · macOS %arg (%arg)"
+          }
+        }
+      }
+    },
+    "%arg, %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg, %arg"
+          }
+        }
+      }
+    },
+    "%arg. %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%arg. %arg"
+          }
+        }
+      }
+    },
+    "000000": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "000000"
+          }
+        }
+      }
+    },
+    "1. Inspect an authorized IPA offline. Sign-in is only needed when you sign or install.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Inspect an authorized IPA offline. Sign-in is only needed when you sign or install."
+          }
+        }
+      }
+    },
+    "2. Connect your iPhone by USB, unlock it and accept Trust This Computer. Check Developer Mode on the iPhone. Wi-Fi requires a paired, reachable device.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Connect your iPhone by USB, unlock it and accept Trust This Computer. Check Developer Mode on the iPhone. Wi-Fi requires a paired, reachable device."
+          }
+        }
+      }
+    },
+    "3. Add your Apple Account using the existing verification flow. Keychain password storage is your choice; unattended renewal requires usable saved credentials.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Add your Apple Account using the existing verification flow. Keychain password storage is your choice; unattended renewal requires usable saved credentials."
+          }
+        }
+      }
+    },
+    "4. Review Installation Readiness, signing identity, extensions and capabilities, then install. Slip verifies the intended iPhone or reports an unknown outcome.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4. Review Installation Readiness, signing identity, extensions and capabilities, then install. Slip verifies the intended iPhone or reports an unknown outcome."
+          }
+        }
+      }
+    },
+    "5. Approve the saved renewal source and optionally enable background refresh and notifications. Free profiles typically expire after seven days; Apple limits still apply. This Mac must be awake and the iPhone reachable.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5. Approve the saved renewal source and optionally enable background refresh and notifications. Free profiles typically expire after seven days; Apple limits still apply. This Mac must be awake and the iPhone reachable."
+          }
+        }
+      }
+    },
+    "6-digit code": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "6-digit code"
+          }
+        }
+      }
+    },
+    "A native home for your iPhone apps.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A native home for your iPhone apps."
+          }
+        }
+      }
+    },
+    "A readiness pass does not mean a renewal ran. Slip needs an available Mac, an approved IPA, usable credentials and the intended reachable iPhone.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A readiness pass does not mean a renewal ran. Slip needs an available Mac, an approved IPA, usable credentials and the intended reachable iPhone."
+          }
+        }
+      }
+    },
+    "About Slip": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About Slip"
+          }
+        }
+      }
+    },
+    "Account: %arg · Team: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account: %arg · Team: %arg"
+          }
+        }
+      }
+    },
+    "Add Apple Account": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Apple Account"
+          }
+        }
+      }
+    },
+    "Add Apps…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Apps…"
+          }
+        }
+      }
+    },
+    "Add Key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Key"
+          }
+        }
+      }
+    },
+    "Add Source": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Source"
+          }
+        }
+      }
+    },
+    "Add an account": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add an account"
+          }
+        }
+      }
+    },
+    "Add the Apple Account used by your free Personal Team.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add the Apple Account used by your free Personal Team."
+          }
+        }
+      }
+    },
+    "AltStore source feed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AltStore source feed"
+          }
+        }
+      }
+    },
+    "App ID": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App ID"
+          }
+        }
+      }
+    },
+    "App ID availability needs attention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App ID availability needs attention"
+          }
+        }
+      }
+    },
+    "App ID planner": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App ID planner"
+          }
+        }
+      }
+    },
+    "App IDs and optional extensions": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App IDs and optional extensions"
+          }
+        }
+      }
+    },
+    "App IDs consumed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App IDs consumed"
+          }
+        }
+      }
+    },
+    "App icon": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App icon"
+          }
+        }
+      }
+    },
+    "Appearance": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appearance"
+          }
+        }
+      }
+    },
+    "Apple 2FA:": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 2FA:"
+          }
+        }
+      }
+    },
+    "Apple Account": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Account"
+          }
+        }
+      }
+    },
+    "Apple Verification": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Verification"
+          }
+        }
+      }
+    },
+    "Apple has not confirmed available quota; the number of registered IDs does not prove remaining capacity.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple has not confirmed available quota; the number of registered IDs does not prove remaining capacity."
+          }
+        }
+      }
+    },
+    "Apple has reached its certificate limit. Select certificates to revoke. Apps signed with them may stop opening and must be signed and installed again, including apps signed by other tools.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple has reached its certificate limit. Select certificates to revoke. Apps signed with them may stop opening and must be signed and installed again, including apps signed by other tools."
+          }
+        }
+      }
+    },
+    "Apple last reported %arg available. %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple last reported %arg available. %arg"
+          }
+        }
+      }
+    },
+    "Apple registrations checked %arg. Counts are a plan, not a reservation.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple registrations checked %arg. Counts are a plan, not a reservation."
+          }
+        }
+      }
+    },
+    "Apple verification code": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple verification code"
+          }
+        }
+      }
+    },
+    "Apply & Review": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply & Review"
+          }
+        }
+      }
+    },
+    "Approve Saved Source": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approve Saved Source"
+          }
+        }
+      }
+    },
+    "Approve this renewal source?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approve this renewal source?"
+          }
+        }
+      }
+    },
+    "Apps signed with this certificate may stop opening and must be signed and installed again. This also affects apps signed by other tools. Serial: %arg.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apps signed with this certificate may stop opening and must be signed and installed again. This also affects apps signed by other tools. Serial: %arg."
+          }
+        }
+      }
+    },
+    "Architecture and binary evidence are available in Installation Readiness. Unknown fields are not inferred.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Architecture and binary evidence are available in Installation Readiness. Unknown fields are not inferred."
+          }
+        }
+      }
+    },
+    "Artwork domains: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artwork domains: %arg"
+          }
+        }
+      }
+    },
+    "Authentication": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authentication"
+          }
+        }
+      }
+    },
+    "Authentication source": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authentication source"
+          }
+        }
+      }
+    },
+    "Automatically refresh %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatically refresh %arg"
+          }
+        }
+      }
+    },
+    "Browse Apps": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browse Apps"
+          }
+        }
+      }
+    },
+    "Browse…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browse…"
+          }
+        }
+      }
+    },
+    "Bundle ID": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bundle ID"
+          }
+        }
+      }
+    },
+    "CFBundleExecutable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CFBundleExecutable"
+          }
+        }
+      }
+    },
+    "CFBundleIdentifier": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CFBundleIdentifier"
+          }
+        }
+      }
+    },
+    "CFBundleShortVersionString": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CFBundleShortVersionString"
+          }
+        }
+      }
+    },
+    "CFBundleVersion": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CFBundleVersion"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "Cancel Download": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel Download"
+          }
+        }
+      }
+    },
+    "Cancel Sign-In": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel Sign-In"
+          }
+        }
+      }
+    },
+    "Cancel This App": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel This App"
+          }
+        }
+      }
+    },
+    "Certificates & App IDs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Certificates & App IDs"
+          }
+        }
+      }
+    },
+    "Change profile picture": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change profile picture"
+          }
+        }
+      }
+    },
+    "Check Background Readiness": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Background Readiness"
+          }
+        }
+      }
+    },
+    "Check Developer Mode on your iPhone": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Developer Mode on your iPhone"
+          }
+        }
+      }
+    },
+    "Check Updates": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Updates"
+          }
+        }
+      }
+    },
+    "Check with Apple": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check with Apple"
+          }
+        }
+      }
+    },
+    "Checking archive…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking archive…"
+          }
+        }
+      }
+    },
+    "Checking server connection": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking server connection"
+          }
+        }
+      }
+    },
+    "Checking source…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking source…"
+          }
+        }
+      }
+    },
+    "Checks every 15 minutes and after wake. Renews one day before expiry.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checks every 15 minutes and after wake. Renews one day before expiry."
+          }
+        }
+      }
+    },
+    "Choose Another…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Another…"
+          }
+        }
+      }
+    },
+    "Choose Profile Picture…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Profile Picture…"
+          }
+        }
+      }
+    },
+    "Choose a release and IPA": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a release and IPA"
+          }
+        }
+      }
+    },
+    "Choose an app to review its publisher, domains and every available release asset.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose an app to review its publisher, domains and every available release asset."
+          }
+        }
+      }
+    },
+    "Choose anisette server": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose anisette server"
+          }
+        }
+      }
+    },
+    "Choose iPhone": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose iPhone"
+          }
+        }
+      }
+    },
+    "Choose replacement IPA…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose replacement IPA…"
+          }
+        }
+      }
+    },
+    "Choose where Apple should send your code.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose where Apple should send your code."
+          }
+        }
+      }
+    },
+    "Choose where Apple should send your verification code.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose where Apple should send your verification code."
+          }
+        }
+      }
+    },
+    "Choose…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose…"
+          }
+        }
+      }
+    },
+    "Cleanup protects saved workspaces, queued apps and renewal schedules.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cleanup protects saved workspaces, queued apps and renewal schedules."
+          }
+        }
+      }
+    },
+    "Clear": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear"
+          }
+        }
+      }
+    },
+    "Clear Completed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Completed"
+          }
+        }
+      }
+    },
+    "Clear Selection": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Selection"
+          }
+        }
+      }
+    },
+    "Clear glass": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear glass"
+          }
+        }
+      }
+    },
+    "Clear search": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear search"
+          }
+        }
+      }
+    },
+    "Close": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        }
+      }
+    },
+    "Closing a window keeps Slip running. Quit stops the GUI companion; an opted-in independent LaunchAgent can still renew approved apps every 15 minutes. Disabling background refresh prevents that worker from renewing.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closing a window keeps Slip running. Quit stops the GUI companion; an opted-in independent LaunchAgent can still renew approved apps every 15 minutes. Disabling background refresh prevents that worker from renewing."
+          }
+        }
+      }
+    },
+    "Companion and background behavior": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Companion and background behavior"
+          }
+        }
+      }
+    },
+    "Confirmed expiry: ": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmed expiry: "
+          }
+        }
+      }
+    },
+    "Conflicts keep local entries. Imported targets require review; renewal is disabled.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conflicts keep local entries. Imported targets require review; renewal is disabled."
+          }
+        }
+      }
+    },
+    "Connect via USB": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect via USB"
+          }
+        }
+      }
+    },
+    "Connect your iPhone": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect your iPhone"
+          }
+        }
+      }
+    },
+    "Connected %arg over %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected %arg over %arg"
+          }
+        }
+      }
+    },
+    "Continue": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continue"
+          }
+        }
+      }
+    },
+    "Copy IDs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy IDs"
+          }
+        }
+      }
+    },
+    "Copy Report": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Report"
+          }
+        }
+      }
+    },
+    "Copy app identifier": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy app identifier"
+          }
+        }
+      }
+    },
+    "Copy log": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy log"
+          }
+        }
+      }
+    },
+    "Copy to Managed Storage": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy to Managed Storage"
+          }
+        }
+      }
+    },
+    "Custom anisette service URL": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom anisette service URL"
+          }
+        }
+      }
+    },
+    "Custom/private server…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom/private server…"
+          }
+        }
+      }
+    },
+    "Customization": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Customization"
+          }
+        }
+      }
+    },
+    "Customization presets": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Customization presets"
+          }
+        }
+      }
+    },
+    "Customize": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Customize"
+          }
+        }
+      }
+    },
+    "Delete": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        }
+      }
+    },
+    "Delete %arg from your Apple developer team? Its provisioning profiles can become invalid. Apple may restrict deletion or keep free-account quota reserved until it expires.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete %arg from your Apple developer team? Its provisioning profiles can become invalid. Apple may restrict deletion or keep free-account quota reserved until it expires."
+          }
+        }
+      }
+    },
+    "Delete App ID": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete App ID"
+          }
+        }
+      }
+    },
+    "Delete this App ID?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete this App ID?"
+          }
+        }
+      }
+    },
+    "Delete…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete…"
+          }
+        }
+      }
+    },
+    "Deleting an App ID does not guarantee that Apple immediately frees a seven-day registration slot.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deleting an App ID does not guarantee that Apple immediately frees a seven-day registration slot."
+          }
+        }
+      }
+    },
+    "Details": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Details"
+          }
+        }
+      }
+    },
+    "Developer Mode: Settings → Privacy & Security → Developer Mode on the iPhone. This is physical device health; Apple Account status is shown separately in Accounts.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Developer Mode: Settings → Privacy & Security → Developer Mode on the iPhone. This is physical device health; Apple Account status is shown separately in Accounts."
+          }
+        }
+      }
+    },
+    "Development certificates": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Development certificates"
+          }
+        }
+      }
+    },
+    "Device Health & Diagnostics": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device Health & Diagnostics"
+          }
+        }
+      }
+    },
+    "Device reference: %arg · scoped to this iPhone": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device reference: %arg · scoped to this iPhone"
+          }
+        }
+      }
+    },
+    "Discovery confirms reachability only. Pairing, trust and Developer Mode: Unknown until an operation verifies them.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discovery confirms reachability only. Pairing, trust and Developer Mode: Unknown until an operation verifies them."
+          }
+        }
+      }
+    },
+    "Discovery is a hint; the core verifies the intended iPhone.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discovery is a hint; the core verifies the intended iPhone."
+          }
+        }
+      }
+    },
+    "Dismiss": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss"
+          }
+        }
+      }
+    },
+    "Dismiss error": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss error"
+          }
+        }
+      }
+    },
+    "Dismiss library notice": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss library notice"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        }
+      }
+    },
+    "Download": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download"
+          }
+        }
+      }
+    },
+    "Download IPA": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download IPA"
+          }
+        }
+      }
+    },
+    "Download This Asset & Inspect…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download This Asset & Inspect…"
+          }
+        }
+      }
+    },
+    "Download domains: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download domains: %arg"
+          }
+        }
+      }
+    },
+    "Download from URL…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download from URL…"
+          }
+        }
+      }
+    },
+    "Download paused · partial file preserved": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download paused · partial file preserved"
+          }
+        }
+      }
+    },
+    "Drag to move navigation": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag to move navigation"
+          }
+        }
+      }
+    },
+    "Drag to resize navigation": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag to resize navigation"
+          }
+        }
+      }
+    },
+    "Droppy Code by Jordy Spruit (Droppy)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Droppy Code by Jordy Spruit (Droppy)"
+          }
+        }
+      }
+    },
+    "Embedded extensions": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Embedded extensions"
+          }
+        }
+      }
+    },
+    "Enable Files and Finder document sharing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable Files and Finder document sharing"
+          }
+        }
+      }
+    },
+    "Enable background refresh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable background refresh"
+          }
+        }
+      }
+    },
+    "Encrypted executable cannot be signed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encrypted executable cannot be signed"
+          }
+        }
+      }
+    },
+    "Encryption": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encryption"
+          }
+        }
+      }
+    },
+    "Estimate: account registrations have not been checked. All IDs are counted as new until you check with Apple.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estimate: account registrations have not been checked. All IDs are counted as new until you check with Apple."
+          }
+        }
+      }
+    },
+    "Estimated expiry: ": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estimated expiry: "
+          }
+        }
+      }
+    },
+    "Evidence: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Evidence: %arg"
+          }
+        }
+      }
+    },
+    "Expected / permitted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expected / permitted"
+          }
+        }
+      }
+    },
+    "Export": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export"
+          }
+        }
+      }
+    },
+    "Export .slipbackup…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export .slipbackup…"
+          }
+        }
+      }
+    },
+    "Export nonsecret library metadata. Passwords, sessions, signing keys, pairing records and iPhone app private data are excluded. Restore requires review, pairing and authentication.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export nonsecret library metadata. Passwords, sessions, signing keys, pairing records and iPhone app private data are excluded. Restore requires review, pairing and authentication."
+          }
+        }
+      }
+    },
+    "Feel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feel"
+          }
+        }
+      }
+    },
+    "Follows macOS": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follows macOS"
+          }
+        }
+      }
+    },
+    "For pairing trouble, unlock the iPhone, connect USB and review Trust This Computer. Slip does not reset pairing records.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For pairing trouble, unlock the iPhone, connect USB and review Trust This Computer. Slip does not reset pairing records."
+          }
+        }
+      }
+    },
+    "Free Personal Teams allow up to 10 App IDs per seven-day period. Each app and retained extension can require an ID. Apple controls renewal; deleting an ID may not immediately make space.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free Personal Teams allow up to 10 App IDs per seven-day period. Each app and retained extension can require an ID. Apple controls renewal; deleting an ID may not immediately make space."
+          }
+        }
+      }
+    },
+    "Free a development certificate": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free a development certificate"
+          }
+        }
+      }
+    },
+    "Free accounts allow up to 10 App IDs per seven-day rolling window. Deleting an App ID does not immediately restore the quota.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free accounts allow up to 10 App IDs per seven-day rolling window. Deleting an App ID does not immediately restore the quota."
+          }
+        }
+      }
+    },
+    "From": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From"
+          }
+        }
+      }
+    },
+    "Getting started and What's New in 3.0": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Getting started and What's New in 3.0"
+          }
+        }
+      }
+    },
+    "GitHub": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GitHub"
+          }
+        }
+      }
+    },
+    "GitHub order · checked before use": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GitHub order · checked before use"
+          }
+        }
+      }
+    },
+    "GitHub releases": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GitHub releases"
+          }
+        }
+      }
+    },
+    "Go to Apple Accounts": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Apple Accounts"
+          }
+        }
+      }
+    },
+    "Haptic feedback": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Haptic feedback"
+          }
+        }
+      }
+    },
+    "Hide sensitive information": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide sensitive information"
+          }
+        }
+      }
+    },
+    "History starts when this app is saved or installed with Slip 2.7.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History starts when this app is saved or installed with Slip 2.7."
+          }
+        }
+      }
+    },
+    "Home Screen name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Home Screen name"
+          }
+        }
+      }
+    },
+    "How Sign-In & Two-Factor Authentication (OTP) Work": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How Sign-In & Two-Factor Authentication (OTP) Work"
+          }
+        }
+      }
+    },
+    "How background renewal works": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How background renewal works"
+          }
+        }
+      }
+    },
+    "I approve subscribing to this source and understand its publisher is unverified": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I approve subscribing to this source and understand its publisher is unverified"
+          }
+        }
+      }
+    },
+    "I understand — keep these instructions in Settings": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I understand — keep these instructions in Settings"
+          }
+        }
+      }
+    },
+    "IPA": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IPA"
+          }
+        }
+      }
+    },
+    "IPA Inspector": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IPA Inspector"
+          }
+        }
+      }
+    },
+    "Import reviewed workspaces": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import reviewed workspaces"
+          }
+        }
+      }
+    },
+    "Include IPA copies I am authorized to copy (128 MiB each, 256 MiB total)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Include IPA copies I am authorized to copy (128 MiB each, 256 MiB total)"
+          }
+        }
+      }
+    },
+    "Includes this workspace and ready queue entries for the selected account; shared IDs count once.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Includes this workspace and ready queue entries for the selected account; shared IDs count once."
+          }
+        }
+      }
+    },
+    "Info.plist overrides": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Info.plist overrides"
+          }
+        }
+      }
+    },
+    "Inspected in %arg s": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inspected in %arg s"
+          }
+        }
+      }
+    },
+    "Install IPA…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install IPA…"
+          }
+        }
+      }
+    },
+    "Install Queue": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install Queue"
+          }
+        }
+      }
+    },
+    "Installation Queue": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installation Queue"
+          }
+        }
+      }
+    },
+    "Installation Readiness": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installation Readiness"
+          }
+        }
+      }
+    },
+    "Installation verification is pending": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installation verification is pending"
+          }
+        }
+      }
+    },
+    "Installed version not verified": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installed version not verified"
+          }
+        }
+      }
+    },
+    "Installed: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installed: %arg"
+          }
+        }
+      }
+    },
+    "Interface adapted and modified by Slip.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interface adapted and modified by Slip."
+          }
+        }
+      }
+    },
+    "Keep All": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep All"
+          }
+        }
+      }
+    },
+    "Keep Certificates": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep Certificates"
+          }
+        }
+      }
+    },
+    "Keep refreshed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep refreshed"
+          }
+        }
+      }
+    },
+    "Keep your Mac awake and your saved IPA in place. Slip prefers Wi-Fi and can use USB. Both devices need the same router or another device’s hotspot.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep your Mac awake and your saved IPA in place. Slip prefers Wi-Fi and can use USB. Both devices need the same router or another device’s hotspot."
+          }
+        }
+      }
+    },
+    "Key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Key"
+          }
+        }
+      }
+    },
+    "Last checked %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last checked %arg"
+          }
+        }
+      }
+    },
+    "Last discovery check: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last discovery check: %arg"
+          }
+        }
+      }
+    },
+    "Last seen: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last seen: %arg"
+          }
+        }
+      }
+    },
+    "Last successful refresh: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last successful refresh: %arg"
+          }
+        }
+      }
+    },
+    "Last verified: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last verified: %arg"
+          }
+        }
+      }
+    },
+    "Latest first": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latest first"
+          }
+        }
+      }
+    },
+    "Launch Slip GUI at login": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Launch Slip GUI at login"
+          }
+        }
+      }
+    },
+    "License": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "License"
+          }
+        }
+      }
+    },
+    "Load More Releases": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load More Releases"
+          }
+        }
+      }
+    },
+    "Load apps": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load apps"
+          }
+        }
+      }
+    },
+    "Load source artwork previews": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load source artwork previews"
+          }
+        }
+      }
+    },
+    "Locate IPA": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Locate IPA"
+          }
+        }
+      }
+    },
+    "Locate IPA…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Locate IPA…"
+          }
+        }
+      }
+    },
+    "Manage App…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage App…"
+          }
+        }
+      }
+    },
+    "Manage the development team used by Slip. Refresh contacts Apple and may request a verification code.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage the development team used by Slip. Refresh contacts Apple and may request a verification code."
+          }
+        }
+      }
+    },
+    "Managed IPA storage": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Managed IPA storage"
+          }
+        }
+      }
+    },
+    "Minimum iOS": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minimum iOS"
+          }
+        }
+      }
+    },
+    "MinimumOSVersion": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MinimumOSVersion"
+          }
+        }
+      }
+    },
+    "Move %arg Files to Trash…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move %arg Files to Trash…"
+          }
+        }
+      }
+    },
+    "Move %arg earlier": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move %arg earlier"
+          }
+        }
+      }
+    },
+    "Move %arg later": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move %arg later"
+          }
+        }
+      }
+    },
+    "Move earlier": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move earlier"
+          }
+        }
+      }
+    },
+    "Move later": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move later"
+          }
+        }
+      }
+    },
+    "Move the listed unreferenced managed IPAs to Trash?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move the listed unreferenced managed IPAs to Trash?"
+          }
+        }
+      }
+    },
+    "Move to Trash": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Trash"
+          }
+        }
+      }
+    },
+    "Needs attention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Needs attention"
+          }
+        }
+      }
+    },
+    "New in 3.0: a menu companion, shared renewal eligibility, explicit waiting reasons, source approval and private renewal history. Slip does not implement iPhone-only signing or restore private iPhone app data.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New in 3.0: a menu companion, shared renewal eligibility, explicit waiting reasons, source approval and private renewal history. Slip does not implement iPhone-only signing or restore private iPhone app data."
+          }
+        }
+      }
+    },
+    "Next eligible check: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next eligible check: %arg"
+          }
+        }
+      }
+    },
+    "No Extensions": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Extensions"
+          }
+        }
+      }
+    },
+    "No development certificates found.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No development certificates found."
+          }
+        }
+      }
+    },
+    "No enabled renewal recipes": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No enabled renewal recipes"
+          }
+        }
+      }
+    },
+    "No matching apps": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching apps"
+          }
+        }
+      }
+    },
+    "No registered App IDs found.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No registered App IDs found."
+          }
+        }
+      }
+    },
+    "No saved accounts": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No saved accounts"
+          }
+        }
+      }
+    },
+    "No saved presets": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No saved presets"
+          }
+        }
+      }
+    },
+    "No selected iPhone. Connection, pairing and trust: Unknown.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No selected iPhone. Connection, pairing and trust: Unknown."
+          }
+        }
+      }
+    },
+    "No subscribed sources. Add a developer's HTTPS source or an explicit GitHub repository above.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No subscribed sources. Add a developer's HTTPS source or an explicit GitHub repository above."
+          }
+        }
+      }
+    },
+    "No unreferenced managed IPAs found.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No unreferenced managed IPAs found."
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
+    "Observed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Observed"
+          }
+        }
+      }
+    },
+    "Offline and account checks are preliminary. Only the newly issued profile can confirm signing capabilities.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline and account checks are preliminary. Only the newly issued profile can confirm signing capabilities."
+          }
+        }
+      }
+    },
+    "Only kept extensions consume App IDs and are signed.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only kept extensions consume App IDs and are signed."
+          }
+        }
+      }
+    },
+    "Only sources you add appear here. Publisher identity and compatibility are source claims, not an endorsement. Every IPA is inspected and reviewed before signing.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only sources you add appear here. Publisher identity and compatibility are source claims, not an endorsement. Every IPA is inspected and reviewed before signing."
+          }
+        }
+      }
+    },
+    "Open": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open"
+          }
+        }
+      }
+    },
+    "Open Accounts": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Accounts"
+          }
+        }
+      }
+    },
+    "Open Detailed Diagnostics": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Detailed Diagnostics"
+          }
+        }
+      }
+    },
+    "Open IPA…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open IPA…"
+          }
+        }
+      }
+    },
+    "Open Library": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Library"
+          }
+        }
+      }
+    },
+    "Open Slip": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Slip"
+          }
+        }
+      }
+    },
+    "Open Slip to finish authentication": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Slip to finish authentication"
+          }
+        }
+      }
+    },
+    "Operation cancelled": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Operation cancelled"
+          }
+        }
+      }
+    },
+    "Operation needs attention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Operation needs attention"
+          }
+        }
+      }
+    },
+    "Optionally copy this IPA into Slip’s storage so moving the original cannot break renewal. Originals are always preserved.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optionally copy this IPA into Slip’s storage so moving the original cannot break renewal. Originals are always preserved."
+          }
+        }
+      }
+    },
+    "Options for %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Options for %arg"
+          }
+        }
+      }
+    },
+    "Or drop an IPA anywhere in this workspace.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Or drop an IPA anywhere in this workspace."
+          }
+        }
+      }
+    },
+    "Password": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password"
+          }
+        }
+      }
+    },
+    "Paste or enter the six-digit code, then press Return to verify.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paste or enter the six-digit code, then press Return to verify."
+          }
+        }
+      }
+    },
+    "Pause Background Refresh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause Background Refresh"
+          }
+        }
+      }
+    },
+    "Pause Download": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause Download"
+          }
+        }
+      }
+    },
+    "Pause background refresh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause background refresh"
+          }
+        }
+      }
+    },
+    "Performance mode": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Performance mode"
+          }
+        }
+      }
+    },
+    "Portable library backup": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Portable library backup"
+          }
+        }
+      }
+    },
+    "Prepare Update…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prepare Update…"
+          }
+        }
+      }
+    },
+    "Preset name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preset name"
+          }
+        }
+      }
+    },
+    "Presets contain preparation choices only. Account, device and sign-in information are excluded.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Presets contain preparation choices only. Account, device and sign-in information are excluded."
+          }
+        }
+      }
+    },
+    "Preview Import…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview Import…"
+          }
+        }
+      }
+    },
+    "Preview Support Report": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview Support Report"
+          }
+        }
+      }
+    },
+    "Preview Unreferenced Files": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview Unreferenced Files"
+          }
+        }
+      }
+    },
+    "Preview sanitized renewal report": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview sanitized renewal report"
+          }
+        }
+      }
+    },
+    "Privacy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy"
+          }
+        }
+      }
+    },
+    "Privacy review: identifiers, paths and free-form context are excluded. Review before saving.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy review: identifiers, paths and free-form context are excluded. Review before saving."
+          }
+        }
+      }
+    },
+    "Private renewal history": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private renewal history"
+          }
+        }
+      }
+    },
+    "Profile name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profile name"
+          }
+        }
+      }
+    },
+    "Properties and components": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Properties and components"
+          }
+        }
+      }
+    },
+    "Protected by macOS Keychain": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protected by macOS Keychain"
+          }
+        }
+      }
+    },
+    "Publisher claim: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publisher claim: %arg"
+          }
+        }
+      }
+    },
+    "Publisher identity is not independently verified. Review every download host before continuing.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publisher identity is not independently verified. Review every download host before continuing."
+          }
+        }
+      }
+    },
+    "Quiet hours for renewal notifications": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quiet hours for renewal notifications"
+          }
+        }
+      }
+    },
+    "Quiet hours suppress banners, not eligible renewals. Equal start and end means quiet all day.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quiet hours suppress banners, not eligible renewals. Equal start and end means quiet all day."
+          }
+        }
+      }
+    },
+    "Quiet renewal notifications": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quiet renewal notifications"
+          }
+        }
+      }
+    },
+    "Quit Slip": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit Slip"
+          }
+        }
+      }
+    },
+    "Recent events": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recent events"
+          }
+        }
+      }
+    },
+    "Recovery": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recovery"
+          }
+        }
+      }
+    },
+    "Refresh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh"
+          }
+        }
+      }
+    },
+    "Refresh Devices": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Devices"
+          }
+        }
+      }
+    },
+    "Refresh Due": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Due"
+          }
+        }
+      }
+    },
+    "Refresh Resource Status": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Resource Status"
+          }
+        }
+      }
+    },
+    "Refresh about 24 hours before the free seven-day profile expires": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh about 24 hours before the free seven-day profile expires"
+          }
+        }
+      }
+    },
+    "Refresh all": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh all"
+          }
+        }
+      }
+    },
+    "Refresh server list": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh server list"
+          }
+        }
+      }
+    },
+    "Refresh this Mac's identity": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh this Mac's identity"
+          }
+        }
+      }
+    },
+    "Refreshing %arg…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refreshing %arg…"
+          }
+        }
+      }
+    },
+    "Registered App IDs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registered App IDs"
+          }
+        }
+      }
+    },
+    "Release and IPA asset": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Release and IPA asset"
+          }
+        }
+      }
+    },
+    "Remote compatibility": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote compatibility"
+          }
+        }
+      }
+    },
+    "Remove": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove"
+          }
+        }
+      }
+    },
+    "Remove %arg from queue": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove %arg from queue"
+          }
+        }
+      }
+    },
+    "Remove Account": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Account"
+          }
+        }
+      }
+    },
+    "Remove All": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove All"
+          }
+        }
+      }
+    },
+    "Remove IPA": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove IPA"
+          }
+        }
+      }
+    },
+    "Remove Profile Picture": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Profile Picture"
+          }
+        }
+      }
+    },
+    "Remove Source": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Source"
+          }
+        }
+      }
+    },
+    "Remove from Library": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove from Library"
+          }
+        }
+      }
+    },
+    "Remove from queue": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove from queue"
+          }
+        }
+      }
+    },
+    "Remove supported-device model restriction": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove supported-device model restriction"
+          }
+        }
+      }
+    },
+    "Remove this saved account?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove this saved account?"
+          }
+        }
+      }
+    },
+    "Renewal Assurance": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renewal Assurance"
+          }
+        }
+      }
+    },
+    "Renewal issue: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renewal issue: %arg"
+          }
+        }
+      }
+    },
+    "Renewal notifications": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renewal notifications"
+          }
+        }
+      }
+    },
+    "Request increased-memory entitlement": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request increased-memory entitlement"
+          }
+        }
+      }
+    },
+    "Resend": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resend"
+          }
+        }
+      }
+    },
+    "Resend Code": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resend Code"
+          }
+        }
+      }
+    },
+    "Reset": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset"
+          }
+        }
+      }
+    },
+    "Resume Background Refresh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume Background Refresh"
+          }
+        }
+      }
+    },
+    "Resume Download": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume Download"
+          }
+        }
+      }
+    },
+    "Retest Connection": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retest Connection"
+          }
+        }
+      }
+    },
+    "Retry Discovery": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Discovery"
+          }
+        }
+      }
+    },
+    "Retry Failed Targets Only": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Failed Targets Only"
+          }
+        }
+      }
+    },
+    "Retry Safely": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Safely"
+          }
+        }
+      }
+    },
+    "Review Entitlement Differences": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review Entitlement Differences"
+          }
+        }
+      }
+    },
+    "Review Saved Source…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review Saved Source…"
+          }
+        }
+      }
+    },
+    "Review before sharing. Only fixed diagnostic categories, recovery actions and numeric software versions are included. Free-form logs, identities, paths and private context are excluded.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review before sharing. Only fixed diagnostic categories, recovery actions and numeric software versions are included. Free-form logs, identities, paths and private context are excluded."
+          }
+        }
+      }
+    },
+    "Revoke All…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoke All…"
+          }
+        }
+      }
+    },
+    "Revoke Certificate": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoke Certificate"
+          }
+        }
+      }
+    },
+    "Revoke Selected…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoke Selected…"
+          }
+        }
+      }
+    },
+    "Revoke this development certificate?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoke this development certificate?"
+          }
+        }
+      }
+    },
+    "Revoke…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoke…"
+          }
+        }
+      }
+    },
+    "SMS verification required": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS verification required"
+          }
+        }
+      }
+    },
+    "Save Choices": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Choices"
+          }
+        }
+      }
+    },
+    "Save reviewed report…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save reviewed report…"
+          }
+        }
+      }
+    },
+    "Saved IPA is missing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved IPA is missing"
+          }
+        }
+      }
+    },
+    "Saved IPA: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved IPA: %arg"
+          }
+        }
+      }
+    },
+    "Saved accounts": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved accounts"
+          }
+        }
+      }
+    },
+    "Saved apps · %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved apps · %arg"
+          }
+        }
+      }
+    },
+    "Schedule": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schedule"
+          }
+        }
+      }
+    },
+    "Search apps": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search apps"
+          }
+        }
+      }
+    },
+    "Search library": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search library"
+          }
+        }
+      }
+    },
+    "Search names, publishers or identifiers": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search names, publishers or identifiers"
+          }
+        }
+      }
+    },
+    "Select All": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select All"
+          }
+        }
+      }
+    },
+    "Selected": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected"
+          }
+        }
+      }
+    },
+    "Send SMS to %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send SMS to %arg"
+          }
+        }
+      }
+    },
+    "Send to Trusted Apple Devices": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send to Trusted Apple Devices"
+          }
+        }
+      }
+    },
+    "Settings…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings…"
+          }
+        }
+      }
+    },
+    "Show": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show"
+          }
+        }
+      }
+    },
+    "Show Slip": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Slip"
+          }
+        }
+      }
+    },
+    "Show in Finder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show in Finder"
+          }
+        }
+      }
+    },
+    "Show menu bar companion": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show menu bar companion"
+          }
+        }
+      }
+    },
+    "Show saved schedule": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show saved schedule"
+          }
+        }
+      }
+    },
+    "Shown until Apple supplies the verified name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shown until Apple supplies the verified name"
+          }
+        }
+      }
+    },
+    "Sign In & Save verifies your credentials with Apple before storing them securely in macOS Keychain. Slip also authenticates when signing apps or managing developer resources. If Apple requires two-factor verification, a six-digit code field appears beneath your password. The field stays in place until Apple finishes verification and prepares the developer session. If Apple already trusts this machine session, sign-in succeeds automatically without needing an OTP.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign In & Save verifies your credentials with Apple before storing them securely in macOS Keychain. Slip also authenticates when signing apps or managing developer resources. If Apple requires two-factor verification, a six-digit code field appears beneath your password. The field stays in place until Apple finishes verification and prepares the developer session. If Apple already trusts this machine session, sign-in succeeds automatically without needing an OTP."
+          }
+        }
+      }
+    },
+    "Signed in and saved securely": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in and saved securely"
+          }
+        }
+      }
+    },
+    "Signing capabilities need review": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing capabilities need review"
+          }
+        }
+      }
+    },
+    "Slip": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slip"
+          }
+        }
+      }
+    },
+    "Slip Renewal Assurance": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slip Renewal Assurance"
+          }
+        }
+      }
+    },
+    "Slip does not upload your IPA or Apple Account credentials to its own service. The selected authentication source prepares data for Apple sign-in. Apple’s sign-in response supplies the profile name; Apple does not expose the private Apple Account photo to third-party apps.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slip does not upload your IPA or Apple Account credentials to its own service. The selected authentication source prepares data for Apple sign-in. Apple’s sign-in response supplies the profile name; Apple does not expose the private Apple Account photo to third-party apps."
+          }
+        }
+      }
+    },
+    "Slip is not affiliated with or endorsed by Droppy. This adapted native interface is licensed under GNU AGPL v3 with upstream additional terms.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slip is not affiliated with or endorsed by Droppy. This adapted native interface is licensed under GNU AGPL v3 with upstream additional terms."
+          }
+        }
+      }
+    },
+    "Slip renewal companion": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slip renewal companion"
+          }
+        }
+      }
+    },
+    "Slip retries transient failures and validates the archive before it becomes installable.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slip retries transient failures and validates the archive before it becomes installable."
+          }
+        }
+      }
+    },
+    "Slip uses this computer name for new development certificates. This Mac requires local authentication data from macOS; availability depends on the macOS version and Apple permissions. Remote compatibility is an explicit choice and may show another device in Apple alerts. Developer sign-in does not add this Mac as a trusted Apple Account device.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slip uses this computer name for new development certificates. This Mac requires local authentication data from macOS; availability depends on the macOS version and Apple permissions. Remote compatibility is an explicit choice and may show another device in Apple alerts. Developer sign-in does not add this Mac as a trusted Apple Account device."
+          }
+        }
+      }
+    },
+    "Smooth animations": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smooth animations"
+          }
+        }
+      }
+    },
+    "Solid": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solid"
+          }
+        }
+      }
+    },
+    "Source": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source"
+          }
+        }
+      }
+    },
+    "Source properties are read from the archive; customization applies only when preparing or signing.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source properties are read from the archive; customization applies only when preparing or signing."
+          }
+        }
+      }
+    },
+    "Source-provided artwork preview": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source-provided artwork preview"
+          }
+        }
+      }
+    },
+    "Source: %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source: %arg"
+          }
+        }
+      }
+    },
+    "Stop Queue": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop Queue"
+          }
+        }
+      }
+    },
+    "Stop managing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop managing"
+          }
+        }
+      }
+    },
+    "Submit Code": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submit Code"
+          }
+        }
+      }
+    },
+    "Support Report": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Support Report"
+          }
+        }
+      }
+    },
+    "Targets use this reviewed account and options; signing remains sequential. Quotas and capabilities are checked per install.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Targets use this reviewed account and options; signing remains sequential. Quotas and capabilities are checked per install."
+          }
+        }
+      }
+    },
+    "Technical key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Technical key"
+          }
+        }
+      }
+    },
+    "The IPA could not be validated": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The IPA could not be validated"
+          }
+        }
+      }
+    },
+    "The connection timed out": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection timed out"
+          }
+        }
+      }
+    },
+    "The saved IPA is missing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The saved IPA is missing"
+          }
+        }
+      }
+    },
+    "The selected iPhone is unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selected iPhone is unavailable"
+          }
+        }
+      }
+    },
+    "These files move to the Bin and can be restored from Finder. Source files outside managed storage are never deleted.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These files move to the Bin and can be restored from Finder. Source files outside managed storage are never deleted."
+          }
+        }
+      }
+    },
+    "Third-party notices": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Third-party notices"
+          }
+        }
+      }
+    },
+    "This IPA uses one App ID.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This IPA uses one App ID."
+          }
+        }
+      }
+    },
+    "This Mac": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Mac"
+          }
+        }
+      }
+    },
+    "This checks the service connection. Apple may still require verification or decline a sign-in.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This checks the service connection. Apple may still require verification or decline a sign-in."
+          }
+        }
+      }
+    },
+    "This removes %arg and their matching Slip Auto Refresh schedules. iOS also deletes their local app data. This cannot be undone.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This removes %arg and their matching Slip Auto Refresh schedules. iOS also deletes their local app data. This cannot be undone."
+          }
+        }
+      }
+    },
+    "This removes the saved password, local signing session, and this account's automatic refresh schedules from Slip. Apple certificates and App IDs remain on your account.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This removes the saved password, local signing session, and this account's automatic refresh schedules from Slip. Apple certificates and App IDs remain on your account."
+          }
+        }
+      }
+    },
+    "Trusted Wi-Fi is ready": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trusted Wi-Fi is ready"
+          }
+        }
+      }
+    },
+    "Type": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type"
+          }
+        }
+      }
+    },
+    "Typed, top-level values; identity-critical keys are protected.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Typed, top-level values; identity-critical keys are protected."
+          }
+        }
+      }
+    },
+    "Uninstall": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uninstall"
+          }
+        }
+      }
+    },
+    "Uninstall %arg App%arg?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uninstall %arg App%arg?"
+          }
+        }
+      }
+    },
+    "Uninstall…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uninstall…"
+          }
+        }
+      }
+    },
+    "Unlock your iPhone, connect USB, and tap Trust.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock your iPhone, connect USB, and tap Trust."
+          }
+        }
+      }
+    },
+    "Until": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Until"
+          }
+        }
+      }
+    },
+    "Updates for %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updates for %arg"
+          }
+        }
+      }
+    },
+    "Updates…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updates…"
+          }
+        }
+      }
+    },
+    "Updating server list": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updating server list"
+          }
+        }
+      }
+    },
+    "Use": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use"
+          }
+        }
+      }
+    },
+    "Use HTTPS, or HTTP for a server running on this Mac.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use HTTPS, or HTTP for a server running on this Mac."
+          }
+        }
+      }
+    },
+    "Use This Mac": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use This Mac"
+          }
+        }
+      }
+    },
+    "Use Updates to follow a release source, or Manage App for presets, history and optional managed storage. Removing a library entry keeps its IPA and Auto Refresh schedule.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use Updates to follow a release source, or Manage App for presets, history and optional managed storage. Removing a library entry keeps its IPA and Auto Refresh schedule."
+          }
+        }
+      }
+    },
+    "Uses authentication data generated by this Mac. Sign-in stops if macOS cannot provide it. Slip never switches to an external service automatically.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uses authentication data generated by this Mac. Sign-in stops if macOS cannot provide it. Slip never switches to an external service automatically."
+          }
+        }
+      }
+    },
+    "Uses only the server you choose. Apple may show a different device in its sign-in alert.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uses only the server you choose. Apple may show a different device in its sign-in alert."
+          }
+        }
+      }
+    },
+    "Verification code": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verification code"
+          }
+        }
+      }
+    },
+    "Verify": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify"
+          }
+        }
+      }
+    },
+    "Verify Device Installation": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify Device Installation"
+          }
+        }
+      }
+    },
+    "Version history": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version history"
+          }
+        }
+      }
+    },
+    "View on GitHub": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View on GitHub"
+          }
+        }
+      }
+    },
+    "Why this matters": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Why this matters"
+          }
+        }
+      }
+    },
+    "Window backdrop": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Window backdrop"
+          }
+        }
+      }
+    },
+    "Your apps · %arg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your apps · %arg"
+          }
+        }
+      }
+    },
+    "Your choice also applies when copying the log.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your choice also applies when copying the log."
+          }
+        }
+      }
+    },
+    "Your free Apple Account has used all available App IDs for this seven-day period. Each app and kept extension needs one ID. You can remove optional extensions to reduce the count, wait for Apple's quota to reset, or manage existing App IDs in Apple Accounts.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your free Apple Account has used all available App IDs for this seven-day period. Each app and kept extension needs one ID. You can remove optional extensions to reduce the count, wait for Apple's quota to reset, or manage existing App IDs in Apple Accounts."
+          }
+        }
+      }
+    },
+    "Your iPhones": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your iPhones"
+          }
+        }
+      }
+    },
+    "https://example.com/App.ipa": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https://example.com/App.ipa"
+          }
+        }
+      }
+    },
+    "https://your-server.example or http://127.0.0.1:6969": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https://your-server.example or http://127.0.0.1:6969"
+          }
+        }
+      }
+    },
+    "iPhone": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone"
+          }
+        }
+      }
+    },
+    "iPhone trust needs attention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone trust needs attention"
+          }
+        }
+      }
+    },
+    "macOS servers": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS servers"
+          }
+        }
+      }
+    },
+    "name@example.com": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "name@example.com"
+          }
+        }
+      }
+    },
+    "·": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "·"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

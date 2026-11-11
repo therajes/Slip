@@ -169,7 +169,9 @@ final class AppModel: ObservableObject {
         }
         if startupTasks {
             do {
-                try AutoRefreshScheduler.installIfAppropriate()
+                let preference = UserDefaults.standard.object(forKey: "backgroundRefreshEnabled")
+                let enabled = preference == nil ? AutoRefreshStore.load().contains(where: \.enabled) : UserDefaults.standard.bool(forKey: "backgroundRefreshEnabled")
+                if enabled { try AutoRefreshScheduler.installIfAppropriate() }
             } catch {
                 appendActivity("Auto Refresh scheduler: \(error.localizedDescription)")
             }

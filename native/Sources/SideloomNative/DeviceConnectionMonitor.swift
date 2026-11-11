@@ -41,6 +41,7 @@ final class DeviceConnectionMonitor {
         refreshTask = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
             await self?.refresh()
+            NotificationCenter.default.post(name: .slipRenewalHint, object: nil)
         }
     }
 
@@ -93,3 +94,5 @@ private final class USBConnectionObserver: @unchecked Sendable {
         if removed != 0 { IOObjectRelease(removed) }
     }
 }
+
+extension Notification.Name { static let slipRenewalHint = Notification.Name("SlipRenewalHint") }

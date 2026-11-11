@@ -14,6 +14,7 @@ struct AutoRefreshView: View {
         WorkspacePage {
             PageHeader(eyebrow: "AUTOMATIC RENEWAL", title: "Auto Refresh",
                        subtitle: "Keep your apps ready to open, with renewal before they expire.")
+            AssuranceView()
             scheduleSummary
             if let error = model.managedInstallationsError {
                 GroupBox {
@@ -107,7 +108,7 @@ struct AutoRefreshView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.appName).font(.system(size: 14, weight: .semibold))
                     HStack(spacing: 8) {
-                        Text(item.status).foregroundStyle(statusColor(item))
+                        Text(RenewalEngine.status(for: item).rawValue).foregroundStyle(statusColor(item))
                         Text("·").foregroundStyle(Chrome.secondaryText)
                         TimelineView(.periodic(from: .now, by: 60)) { context in
                             Text((item.expiryIsEstimated ? "Estimated · " : "") + RenewalHealth.label(expiration: item.expiresAt, now: context.date))

@@ -1259,6 +1259,10 @@ pub fn user_facing_error(message: &str) -> String {
 pub async fn run() -> Result<(), AppError> {
     let mut arguments = std::env::args().skip(1);
     match arguments.next().as_deref() {
+        Some("version" | "--version") => {
+            emit(json!({"type":"completed","version":env!("CARGO_PKG_VERSION")}));
+            Ok(())
+        }
         Some("host-identity") => {
             let mut identity = serde_json::to_value(isideload::util::host_identity::host_identity())
                 .map_err(|_| AppError::Misc("Unable to read this computer's identity.".into()))?;

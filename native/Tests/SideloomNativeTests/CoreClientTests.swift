@@ -13,6 +13,28 @@ final class CoreClientTests: XCTestCase, @unchecked Sendable {
         return script
     }
 
+    func testCapabilityAcknowledgementUsesRustCamelCaseBoolean() async throws {
+        let executable = try fixture("""
+        printf '%s\n' '{"type":"provisioningReviewRequired"}'
+        IFS= read -r response
+        case "$response" in
+          *'"acknowledgeCapabilities":true'*) printf '%s\n' '{"type":"completed","message":"accepted"}' ;;
+          *'"acknowledgeCapabilities":false'*) printf '%s\n' '{"type":"completed","message":"declined"}' ;;
+          *) printf '%s\n' '{"type":"error","message":"Invalid capability acknowledgement key or type"}'; exit 1 ;;
+        esac
+        """)
+        for accepted in [true, false] {
+            let core = CoreClient(executableURL: executable)
+            let stream = try core.authenticatedStream(command: "install", request: ["fixture": true])
+            var message: String?
+            for try await event in stream {
+                if event.type == "provisioningReviewRequired" { try core.submitCapabilityAcknowledgement(accepted) }
+                if event.type == "completed" { message = event.message }
+            }
+            XCTAssertEqual(message, accepted ? "accepted" : "declined")
+        }
+    }
+
     func testFragmentedFinalResponseAndImmediateRetry() async throws {
         let executable = try fixture("""
         printf '%s' '{"type":'

@@ -7,6 +7,8 @@ struct ManagedInstallationsRepository {
 
     func load() throws -> [ManagedInstallation] {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
+        let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isSymbolicLinkKey])
+        guard values.isSymbolicLink != true, (values.fileSize ?? Int.max) <= 16 * 1024 * 1024 else { throw SideloomError.message("The renewal schedule exceeds its safety budget.") }
         return try JSONDecoder().decode([ManagedInstallation].self, from: Data(contentsOf: fileURL))
     }
 
@@ -20,7 +22,10 @@ struct ManagedInstallationsRepository {
         let result = try body(&entries)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(entries).write(to: fileURL, options: .atomic)
+        let data = try encoder.encode(entries)
+        guard data.count <= 16 * 1024 * 1024 else { throw SideloomError.message("The renewal schedule exceeds its safety budget.") }
+        try data.write(to: fileURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
         return result
     }
 

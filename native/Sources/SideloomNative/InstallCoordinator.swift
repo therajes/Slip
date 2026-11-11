@@ -190,6 +190,13 @@ extension AppModel {
                             var refreshed = item
                             let now = Date()
                             refreshed.installedAt = now
+                            refreshed.pendingOperationID = nil
+                            refreshed.lastVerifiedAt = now
+                            refreshed.lastReachableAt = now
+                            refreshed.retryCount = 0
+                            refreshed.actionRequired = false
+                            refreshed.reasonCode = "install.verified"
+                            refreshed.nextEligibleAt = nil
                             refreshed.profileExpiryConfirmed = event.profileExpiresAt != nil
                             refreshed.expiresAt = event.profileExpiresAt.map { Date(timeIntervalSince1970: $0) } ?? now.addingTimeInterval(7 * 86400)
                             refreshed.nextRefreshAt = refreshed.expiresAt.addingTimeInterval(-86400)

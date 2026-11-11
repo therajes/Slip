@@ -1,0 +1,832 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>%arg %arg</key>
+	<string>%arg %arg</string>
+	<key>%arg (%arg)</key>
+	<string>%arg (%arg)</string>
+	<key>%arg (⌘%arg)</key>
+	<string>%arg (⌘%arg)</string>
+	<key>%arg app icon</key>
+	<string>%arg app icon</string>
+	<key>%arg artwork</key>
+	<string>%arg artwork</string>
+	<key>%arg blocking · %arg warnings</key>
+	<string>%arg blocking · %arg warnings</string>
+	<key>%arg changes</key>
+	<string>%arg changes</string>
+	<key>%arg icon</key>
+	<string>%arg icon</string>
+	<key>%arg in %arg managed IPAs</key>
+	<string>%arg in %arg managed IPAs</string>
+	<key>%arg of %arg selected</key>
+	<string>%arg of %arg selected</string>
+	<key>%arg pending · Stops if an app needs attention.</key>
+	<string>%arg pending · Stops if an app needs attention.</string>
+	<key>%arg profile picture</key>
+	<string>%arg profile picture</string>
+	<key>%arg registered</key>
+	<string>%arg registered</string>
+	<key>%arg · %arg</key>
+	<string>%arg · %arg</string>
+	<key>%arg · %arg · %arg</key>
+	<string>%arg · %arg · %arg</string>
+	<key>%arg · The downloaded bundle identifier must match this app. Saved choices are restored for review; installation requires a separate action.</key>
+	<string>%arg · The downloaded bundle identifier must match this app. Saved choices are restored for review; installation requires a separate action.</string>
+	<key>%arg · iOS %arg · %arg</key>
+	<string>%arg · iOS %arg · %arg</string>
+	<key>%arg · macOS %arg (%arg)</key>
+	<string>%arg · macOS %arg (%arg)</string>
+	<key>%arg, %arg</key>
+	<string>%arg, %arg</string>
+	<key>%arg. %arg</key>
+	<string>%arg. %arg</string>
+	<key>000000</key>
+	<string>000000</string>
+	<key>1. Inspect an authorized IPA offline. Sign-in is only needed when you sign or install.</key>
+	<string>1. Inspect an authorized IPA offline. Sign-in is only needed when you sign or install.</string>
+	<key>2. Connect your iPhone by USB, unlock it and accept Trust This Computer. Check Developer Mode on the iPhone. Wi-Fi requires a paired, reachable device.</key>
+	<string>2. Connect your iPhone by USB, unlock it and accept Trust This Computer. Check Developer Mode on the iPhone. Wi-Fi requires a paired, reachable device.</string>
+	<key>3. Add your Apple Account using the existing verification flow. Keychain password storage is your choice; unattended renewal requires usable saved credentials.</key>
+	<string>3. Add your Apple Account using the existing verification flow. Keychain password storage is your choice; unattended renewal requires usable saved credentials.</string>
+	<key>4. Review Installation Readiness, signing identity, extensions and capabilities, then install. Slip verifies the intended iPhone or reports an unknown outcome.</key>
+	<string>4. Review Installation Readiness, signing identity, extensions and capabilities, then install. Slip verifies the intended iPhone or reports an unknown outcome.</string>
+	<key>5. Approve the saved renewal source and optionally enable background refresh and notifications. Free profiles typically expire after seven days; Apple limits still apply. This Mac must be awake and the iPhone reachable.</key>
+	<string>5. Approve the saved renewal source and optionally enable background refresh and notifications. Free profiles typically expire after seven days; Apple limits still apply. This Mac must be awake and the iPhone reachable.</string>
+	<key>6-digit code</key>
+	<string>6-digit code</string>
+	<key>A native home for your iPhone apps.</key>
+	<string>A native home for your iPhone apps.</string>
+	<key>A readiness pass does not mean a renewal ran. Slip needs an available Mac, an approved IPA, usable credentials and the intended reachable iPhone.</key>
+	<string>A readiness pass does not mean a renewal ran. Slip needs an available Mac, an approved IPA, usable credentials and the intended reachable iPhone.</string>
+	<key>About Slip</key>
+	<string>About Slip</string>
+	<key>Account: %arg · Team: %arg</key>
+	<string>Account: %arg · Team: %arg</string>
+	<key>Add Apple Account</key>
+	<string>Add Apple Account</string>
+	<key>Add Apps…</key>
+	<string>Add Apps…</string>
+	<key>Add Key</key>
+	<string>Add Key</string>
+	<key>Add Source</key>
+	<string>Add Source</string>
+	<key>Add an account</key>
+	<string>Add an account</string>
+	<key>Add the Apple Account used by your free Personal Team.</key>
+	<string>Add the Apple Account used by your free Personal Team.</string>
+	<key>AltStore source feed</key>
+	<string>AltStore source feed</string>
+	<key>App ID</key>
+	<string>App ID</string>
+	<key>App ID availability needs attention</key>
+	<string>App ID availability needs attention</string>
+	<key>App ID planner</key>
+	<string>App ID planner</string>
+	<key>App IDs and optional extensions</key>
+	<string>App IDs and optional extensions</string>
+	<key>App IDs consumed</key>
+	<string>App IDs consumed</string>
+	<key>App icon</key>
+	<string>App icon</string>
+	<key>Appearance</key>
+	<string>Appearance</string>
+	<key>Apple 2FA:</key>
+	<string>Apple 2FA:</string>
+	<key>Apple Account</key>
+	<string>Apple Account</string>
+	<key>Apple Verification</key>
+	<string>Apple Verification</string>
+	<key>Apple has not confirmed available quota; the number of registered IDs does not prove remaining capacity.</key>
+	<string>Apple has not confirmed available quota; the number of registered IDs does not prove remaining capacity.</string>
+	<key>Apple has reached its certificate limit. Select certificates to revoke. Apps signed with them may stop opening and must be signed and installed again, including apps signed by other tools.</key>
+	<string>Apple has reached its certificate limit. Select certificates to revoke. Apps signed with them may stop opening and must be signed and installed again, including apps signed by other tools.</string>
+	<key>Apple last reported %arg available. %arg</key>
+	<string>Apple last reported %arg available. %arg</string>
+	<key>Apple registrations checked %arg. Counts are a plan, not a reservation.</key>
+	<string>Apple registrations checked %arg. Counts are a plan, not a reservation.</string>
+	<key>Apple verification code</key>
+	<string>Apple verification code</string>
+	<key>Apply &amp; Review</key>
+	<string>Apply &amp; Review</string>
+	<key>Approve Saved Source</key>
+	<string>Approve Saved Source</string>
+	<key>Approve this renewal source?</key>
+	<string>Approve this renewal source?</string>
+	<key>Apps signed with this certificate may stop opening and must be signed and installed again. This also affects apps signed by other tools. Serial: %arg.</key>
+	<string>Apps signed with this certificate may stop opening and must be signed and installed again. This also affects apps signed by other tools. Serial: %arg.</string>
+	<key>Architecture and binary evidence are available in Installation Readiness. Unknown fields are not inferred.</key>
+	<string>Architecture and binary evidence are available in Installation Readiness. Unknown fields are not inferred.</string>
+	<key>Artwork domains: %arg</key>
+	<string>Artwork domains: %arg</string>
+	<key>Authentication</key>
+	<string>Authentication</string>
+	<key>Authentication source</key>
+	<string>Authentication source</string>
+	<key>Automatically refresh %arg</key>
+	<string>Automatically refresh %arg</string>
+	<key>Browse Apps</key>
+	<string>Browse Apps</string>
+	<key>Browse…</key>
+	<string>Browse…</string>
+	<key>Bundle ID</key>
+	<string>Bundle ID</string>
+	<key>CFBundleExecutable</key>
+	<string>CFBundleExecutable</string>
+	<key>CFBundleIdentifier</key>
+	<string>CFBundleIdentifier</string>
+	<key>CFBundleShortVersionString</key>
+	<string>CFBundleShortVersionString</string>
+	<key>CFBundleVersion</key>
+	<string>CFBundleVersion</string>
+	<key>Cancel</key>
+	<string>Cancel</string>
+	<key>Cancel Download</key>
+	<string>Cancel Download</string>
+	<key>Cancel Sign-In</key>
+	<string>Cancel Sign-In</string>
+	<key>Cancel This App</key>
+	<string>Cancel This App</string>
+	<key>Certificates &amp; App IDs</key>
+	<string>Certificates &amp; App IDs</string>
+	<key>Change profile picture</key>
+	<string>Change profile picture</string>
+	<key>Check Background Readiness</key>
+	<string>Check Background Readiness</string>
+	<key>Check Developer Mode on your iPhone</key>
+	<string>Check Developer Mode on your iPhone</string>
+	<key>Check Updates</key>
+	<string>Check Updates</string>
+	<key>Check with Apple</key>
+	<string>Check with Apple</string>
+	<key>Checking archive…</key>
+	<string>Checking archive…</string>
+	<key>Checking server connection</key>
+	<string>Checking server connection</string>
+	<key>Checking source…</key>
+	<string>Checking source…</string>
+	<key>Checks every 15 minutes and after wake. Renews one day before expiry.</key>
+	<string>Checks every 15 minutes and after wake. Renews one day before expiry.</string>
+	<key>Choose Another…</key>
+	<string>Choose Another…</string>
+	<key>Choose Profile Picture…</key>
+	<string>Choose Profile Picture…</string>
+	<key>Choose a release and IPA</key>
+	<string>Choose a release and IPA</string>
+	<key>Choose an app to review its publisher, domains and every available release asset.</key>
+	<string>Choose an app to review its publisher, domains and every available release asset.</string>
+	<key>Choose anisette server</key>
+	<string>Choose anisette server</string>
+	<key>Choose iPhone</key>
+	<string>Choose iPhone</string>
+	<key>Choose replacement IPA…</key>
+	<string>Choose replacement IPA…</string>
+	<key>Choose where Apple should send your code.</key>
+	<string>Choose where Apple should send your code.</string>
+	<key>Choose where Apple should send your verification code.</key>
+	<string>Choose where Apple should send your verification code.</string>
+	<key>Choose…</key>
+	<string>Choose…</string>
+	<key>Cleanup protects saved workspaces, queued apps and renewal schedules.</key>
+	<string>Cleanup protects saved workspaces, queued apps and renewal schedules.</string>
+	<key>Clear</key>
+	<string>Clear</string>
+	<key>Clear Completed</key>
+	<string>Clear Completed</string>
+	<key>Clear Selection</key>
+	<string>Clear Selection</string>
+	<key>Clear glass</key>
+	<string>Clear glass</string>
+	<key>Clear search</key>
+	<string>Clear search</string>
+	<key>Close</key>
+	<string>Close</string>
+	<key>Closing a window keeps Slip running. Quit stops the GUI companion; an opted-in independent LaunchAgent can still renew approved apps every 15 minutes. Disabling background refresh prevents that worker from renewing.</key>
+	<string>Closing a window keeps Slip running. Quit stops the GUI companion; an opted-in independent LaunchAgent can still renew approved apps every 15 minutes. Disabling background refresh prevents that worker from renewing.</string>
+	<key>Companion and background behavior</key>
+	<string>Companion and background behavior</string>
+	<key>Confirmed expiry: </key>
+	<string>Confirmed expiry: </string>
+	<key>Conflicts keep local entries. Imported targets require review; renewal is disabled.</key>
+	<string>Conflicts keep local entries. Imported targets require review; renewal is disabled.</string>
+	<key>Connect via USB</key>
+	<string>Connect via USB</string>
+	<key>Connect your iPhone</key>
+	<string>Connect your iPhone</string>
+	<key>Connected %arg over %arg</key>
+	<string>Connected %arg over %arg</string>
+	<key>Continue</key>
+	<string>Continue</string>
+	<key>Copy IDs</key>
+	<string>Copy IDs</string>
+	<key>Copy Report</key>
+	<string>Copy Report</string>
+	<key>Copy app identifier</key>
+	<string>Copy app identifier</string>
+	<key>Copy log</key>
+	<string>Copy log</string>
+	<key>Copy to Managed Storage</key>
+	<string>Copy to Managed Storage</string>
+	<key>Custom anisette service URL</key>
+	<string>Custom anisette service URL</string>
+	<key>Custom/private server…</key>
+	<string>Custom/private server…</string>
+	<key>Customization</key>
+	<string>Customization</string>
+	<key>Customization presets</key>
+	<string>Customization presets</string>
+	<key>Customize</key>
+	<string>Customize</string>
+	<key>Delete</key>
+	<string>Delete</string>
+	<key>Delete %arg from your Apple developer team? Its provisioning profiles can become invalid. Apple may restrict deletion or keep free-account quota reserved until it expires.</key>
+	<string>Delete %arg from your Apple developer team? Its provisioning profiles can become invalid. Apple may restrict deletion or keep free-account quota reserved until it expires.</string>
+	<key>Delete App ID</key>
+	<string>Delete App ID</string>
+	<key>Delete this App ID?</key>
+	<string>Delete this App ID?</string>
+	<key>Delete…</key>
+	<string>Delete…</string>
+	<key>Deleting an App ID does not guarantee that Apple immediately frees a seven-day registration slot.</key>
+	<string>Deleting an App ID does not guarantee that Apple immediately frees a seven-day registration slot.</string>
+	<key>Details</key>
+	<string>Details</string>
+	<key>Developer Mode: Settings → Privacy &amp; Security → Developer Mode on the iPhone. This is physical device health; Apple Account status is shown separately in Accounts.</key>
+	<string>Developer Mode: Settings → Privacy &amp; Security → Developer Mode on the iPhone. This is physical device health; Apple Account status is shown separately in Accounts.</string>
+	<key>Development certificates</key>
+	<string>Development certificates</string>
+	<key>Device Health &amp; Diagnostics</key>
+	<string>Device Health &amp; Diagnostics</string>
+	<key>Device reference: %arg · scoped to this iPhone</key>
+	<string>Device reference: %arg · scoped to this iPhone</string>
+	<key>Discovery confirms reachability only. Pairing, trust and Developer Mode: Unknown until an operation verifies them.</key>
+	<string>Discovery confirms reachability only. Pairing, trust and Developer Mode: Unknown until an operation verifies them.</string>
+	<key>Discovery is a hint; the core verifies the intended iPhone.</key>
+	<string>Discovery is a hint; the core verifies the intended iPhone.</string>
+	<key>Dismiss</key>
+	<string>Dismiss</string>
+	<key>Dismiss error</key>
+	<string>Dismiss error</string>
+	<key>Dismiss library notice</key>
+	<string>Dismiss library notice</string>
+	<key>Done</key>
+	<string>Done</string>
+	<key>Download</key>
+	<string>Download</string>
+	<key>Download IPA</key>
+	<string>Download IPA</string>
+	<key>Download This Asset &amp; Inspect…</key>
+	<string>Download This Asset &amp; Inspect…</string>
+	<key>Download domains: %arg</key>
+	<string>Download domains: %arg</string>
+	<key>Download from URL…</key>
+	<string>Download from URL…</string>
+	<key>Download paused · partial file preserved</key>
+	<string>Download paused · partial file preserved</string>
+	<key>Drag to move navigation</key>
+	<string>Drag to move navigation</string>
+	<key>Drag to resize navigation</key>
+	<string>Drag to resize navigation</string>
+	<key>Droppy Code by Jordy Spruit (Droppy)</key>
+	<string>Droppy Code by Jordy Spruit (Droppy)</string>
+	<key>Embedded extensions</key>
+	<string>Embedded extensions</string>
+	<key>Enable Files and Finder document sharing</key>
+	<string>Enable Files and Finder document sharing</string>
+	<key>Enable background refresh</key>
+	<string>Enable background refresh</string>
+	<key>Encrypted executable cannot be signed</key>
+	<string>Encrypted executable cannot be signed</string>
+	<key>Encryption</key>
+	<string>Encryption</string>
+	<key>Estimate: account registrations have not been checked. All IDs are counted as new until you check with Apple.</key>
+	<string>Estimate: account registrations have not been checked. All IDs are counted as new until you check with Apple.</string>
+	<key>Estimated expiry: </key>
+	<string>Estimated expiry: </string>
+	<key>Evidence: %arg</key>
+	<string>Evidence: %arg</string>
+	<key>Expected / permitted</key>
+	<string>Expected / permitted</string>
+	<key>Export</key>
+	<string>Export</string>
+	<key>Export .slipbackup…</key>
+	<string>Export .slipbackup…</string>
+	<key>Export nonsecret library metadata. Passwords, sessions, signing keys, pairing records and iPhone app private data are excluded. Restore requires review, pairing and authentication.</key>
+	<string>Export nonsecret library metadata. Passwords, sessions, signing keys, pairing records and iPhone app private data are excluded. Restore requires review, pairing and authentication.</string>
+	<key>Feel</key>
+	<string>Feel</string>
+	<key>Follows macOS</key>
+	<string>Follows macOS</string>
+	<key>For pairing trouble, unlock the iPhone, connect USB and review Trust This Computer. Slip does not reset pairing records.</key>
+	<string>For pairing trouble, unlock the iPhone, connect USB and review Trust This Computer. Slip does not reset pairing records.</string>
+	<key>Free Personal Teams allow up to 10 App IDs per seven-day period. Each app and retained extension can require an ID. Apple controls renewal; deleting an ID may not immediately make space.</key>
+	<string>Free Personal Teams allow up to 10 App IDs per seven-day period. Each app and retained extension can require an ID. Apple controls renewal; deleting an ID may not immediately make space.</string>
+	<key>Free a development certificate</key>
+	<string>Free a development certificate</string>
+	<key>Free accounts allow up to 10 App IDs per seven-day rolling window. Deleting an App ID does not immediately restore the quota.</key>
+	<string>Free accounts allow up to 10 App IDs per seven-day rolling window. Deleting an App ID does not immediately restore the quota.</string>
+	<key>From</key>
+	<string>From</string>
+	<key>Getting started and What's New in 3.0</key>
+	<string>Getting started and What's New in 3.0</string>
+	<key>GitHub</key>
+	<string>GitHub</string>
+	<key>GitHub order · checked before use</key>
+	<string>GitHub order · checked before use</string>
+	<key>GitHub releases</key>
+	<string>GitHub releases</string>
+	<key>Go to Apple Accounts</key>
+	<string>Go to Apple Accounts</string>
+	<key>Haptic feedback</key>
+	<string>Haptic feedback</string>
+	<key>Hide sensitive information</key>
+	<string>Hide sensitive information</string>
+	<key>History starts when this app is saved or installed with Slip 2.7.</key>
+	<string>History starts when this app is saved or installed with Slip 2.7.</string>
+	<key>Home Screen name</key>
+	<string>Home Screen name</string>
+	<key>How Sign-In &amp; Two-Factor Authentication (OTP) Work</key>
+	<string>How Sign-In &amp; Two-Factor Authentication (OTP) Work</string>
+	<key>How background renewal works</key>
+	<string>How background renewal works</string>
+	<key>I approve subscribing to this source and understand its publisher is unverified</key>
+	<string>I approve subscribing to this source and understand its publisher is unverified</string>
+	<key>I understand — keep these instructions in Settings</key>
+	<string>I understand — keep these instructions in Settings</string>
+	<key>IPA</key>
+	<string>IPA</string>
+	<key>IPA Inspector</key>
+	<string>IPA Inspector</string>
+	<key>Import reviewed workspaces</key>
+	<string>Import reviewed workspaces</string>
+	<key>Include IPA copies I am authorized to copy (128 MiB each, 256 MiB total)</key>
+	<string>Include IPA copies I am authorized to copy (128 MiB each, 256 MiB total)</string>
+	<key>Includes this workspace and ready queue entries for the selected account; shared IDs count once.</key>
+	<string>Includes this workspace and ready queue entries for the selected account; shared IDs count once.</string>
+	<key>Info.plist overrides</key>
+	<string>Info.plist overrides</string>
+	<key>Inspected in %arg s</key>
+	<string>Inspected in %arg s</string>
+	<key>Install IPA…</key>
+	<string>Install IPA…</string>
+	<key>Install Queue</key>
+	<string>Install Queue</string>
+	<key>Installation Queue</key>
+	<string>Installation Queue</string>
+	<key>Installation Readiness</key>
+	<string>Installation Readiness</string>
+	<key>Installation verification is pending</key>
+	<string>Installation verification is pending</string>
+	<key>Installed version not verified</key>
+	<string>Installed version not verified</string>
+	<key>Installed: %arg</key>
+	<string>Installed: %arg</string>
+	<key>Interface adapted and modified by Slip.</key>
+	<string>Interface adapted and modified by Slip.</string>
+	<key>Keep All</key>
+	<string>Keep All</string>
+	<key>Keep Certificates</key>
+	<string>Keep Certificates</string>
+	<key>Keep refreshed</key>
+	<string>Keep refreshed</string>
+	<key>Keep your Mac awake and your saved IPA in place. Slip prefers Wi-Fi and can use USB. Both devices need the same router or another device’s hotspot.</key>
+	<string>Keep your Mac awake and your saved IPA in place. Slip prefers Wi-Fi and can use USB. Both devices need the same router or another device’s hotspot.</string>
+	<key>Key</key>
+	<string>Key</string>
+	<key>Last checked %arg</key>
+	<string>Last checked %arg</string>
+	<key>Last discovery check: %arg</key>
+	<string>Last discovery check: %arg</string>
+	<key>Last seen: %arg</key>
+	<string>Last seen: %arg</string>
+	<key>Last successful refresh: %arg</key>
+	<string>Last successful refresh: %arg</string>
+	<key>Last verified: %arg</key>
+	<string>Last verified: %arg</string>
+	<key>Latest first</key>
+	<string>Latest first</string>
+	<key>Launch Slip GUI at login</key>
+	<string>Launch Slip GUI at login</string>
+	<key>License</key>
+	<string>License</string>
+	<key>Load More Releases</key>
+	<string>Load More Releases</string>
+	<key>Load apps</key>
+	<string>Load apps</string>
+	<key>Load source artwork previews</key>
+	<string>Load source artwork previews</string>
+	<key>Locate IPA</key>
+	<string>Locate IPA</string>
+	<key>Locate IPA…</key>
+	<string>Locate IPA…</string>
+	<key>Manage App…</key>
+	<string>Manage App…</string>
+	<key>Manage the development team used by Slip. Refresh contacts Apple and may request a verification code.</key>
+	<string>Manage the development team used by Slip. Refresh contacts Apple and may request a verification code.</string>
+	<key>Managed IPA storage</key>
+	<string>Managed IPA storage</string>
+	<key>Minimum iOS</key>
+	<string>Minimum iOS</string>
+	<key>MinimumOSVersion</key>
+	<string>MinimumOSVersion</string>
+	<key>Move %arg Files to Trash…</key>
+	<string>Move %arg Files to Trash…</string>
+	<key>Move %arg earlier</key>
+	<string>Move %arg earlier</string>
+	<key>Move %arg later</key>
+	<string>Move %arg later</string>
+	<key>Move earlier</key>
+	<string>Move earlier</string>
+	<key>Move later</key>
+	<string>Move later</string>
+	<key>Move the listed unreferenced managed IPAs to Trash?</key>
+	<string>Move the listed unreferenced managed IPAs to Trash?</string>
+	<key>Move to Trash</key>
+	<string>Move to Trash</string>
+	<key>Needs attention</key>
+	<string>Needs attention</string>
+	<key>New in 3.0: a menu companion, shared renewal eligibility, explicit waiting reasons, source approval and private renewal history. Slip does not implement iPhone-only signing or restore private iPhone app data.</key>
+	<string>New in 3.0: a menu companion, shared renewal eligibility, explicit waiting reasons, source approval and private renewal history. Slip does not implement iPhone-only signing or restore private iPhone app data.</string>
+	<key>Next eligible check: %arg</key>
+	<string>Next eligible check: %arg</string>
+	<key>No Extensions</key>
+	<string>No Extensions</string>
+	<key>No development certificates found.</key>
+	<string>No development certificates found.</string>
+	<key>No enabled renewal recipes</key>
+	<string>No enabled renewal recipes</string>
+	<key>No matching apps</key>
+	<string>No matching apps</string>
+	<key>No registered App IDs found.</key>
+	<string>No registered App IDs found.</string>
+	<key>No saved accounts</key>
+	<string>No saved accounts</string>
+	<key>No saved presets</key>
+	<string>No saved presets</string>
+	<key>No selected iPhone. Connection, pairing and trust: Unknown.</key>
+	<string>No selected iPhone. Connection, pairing and trust: Unknown.</string>
+	<key>No subscribed sources. Add a developer's HTTPS source or an explicit GitHub repository above.</key>
+	<string>No subscribed sources. Add a developer's HTTPS source or an explicit GitHub repository above.</string>
+	<key>No unreferenced managed IPAs found.</key>
+	<string>No unreferenced managed IPAs found.</string>
+	<key>OK</key>
+	<string>OK</string>
+	<key>Observed</key>
+	<string>Observed</string>
+	<key>Offline and account checks are preliminary. Only the newly issued profile can confirm signing capabilities.</key>
+	<string>Offline and account checks are preliminary. Only the newly issued profile can confirm signing capabilities.</string>
+	<key>Only kept extensions consume App IDs and are signed.</key>
+	<string>Only kept extensions consume App IDs and are signed.</string>
+	<key>Only sources you add appear here. Publisher identity and compatibility are source claims, not an endorsement. Every IPA is inspected and reviewed before signing.</key>
+	<string>Only sources you add appear here. Publisher identity and compatibility are source claims, not an endorsement. Every IPA is inspected and reviewed before signing.</string>
+	<key>Open</key>
+	<string>Open</string>
+	<key>Open Accounts</key>
+	<string>Open Accounts</string>
+	<key>Open Detailed Diagnostics</key>
+	<string>Open Detailed Diagnostics</string>
+	<key>Open IPA…</key>
+	<string>Open IPA…</string>
+	<key>Open Library</key>
+	<string>Open Library</string>
+	<key>Open Slip</key>
+	<string>Open Slip</string>
+	<key>Open Slip to finish authentication</key>
+	<string>Open Slip to finish authentication</string>
+	<key>Operation cancelled</key>
+	<string>Operation cancelled</string>
+	<key>Operation needs attention</key>
+	<string>Operation needs attention</string>
+	<key>Optionally copy this IPA into Slip’s storage so moving the original cannot break renewal. Originals are always preserved.</key>
+	<string>Optionally copy this IPA into Slip’s storage so moving the original cannot break renewal. Originals are always preserved.</string>
+	<key>Options for %arg</key>
+	<string>Options for %arg</string>
+	<key>Or drop an IPA anywhere in this workspace.</key>
+	<string>Or drop an IPA anywhere in this workspace.</string>
+	<key>Password</key>
+	<string>Password</string>
+	<key>Paste or enter the six-digit code, then press Return to verify.</key>
+	<string>Paste or enter the six-digit code, then press Return to verify.</string>
+	<key>Pause Background Refresh</key>
+	<string>Pause Background Refresh</string>
+	<key>Pause Download</key>
+	<string>Pause Download</string>
+	<key>Pause background refresh</key>
+	<string>Pause background refresh</string>
+	<key>Performance mode</key>
+	<string>Performance mode</string>
+	<key>Portable library backup</key>
+	<string>Portable library backup</string>
+	<key>Prepare Update…</key>
+	<string>Prepare Update…</string>
+	<key>Preset name</key>
+	<string>Preset name</string>
+	<key>Presets contain preparation choices only. Account, device and sign-in information are excluded.</key>
+	<string>Presets contain preparation choices only. Account, device and sign-in information are excluded.</string>
+	<key>Preview Import…</key>
+	<string>Preview Import…</string>
+	<key>Preview Support Report</key>
+	<string>Preview Support Report</string>
+	<key>Preview Unreferenced Files</key>
+	<string>Preview Unreferenced Files</string>
+	<key>Preview sanitized renewal report</key>
+	<string>Preview sanitized renewal report</string>
+	<key>Privacy</key>
+	<string>Privacy</string>
+	<key>Privacy review: identifiers, paths and free-form context are excluded. Review before saving.</key>
+	<string>Privacy review: identifiers, paths and free-form context are excluded. Review before saving.</string>
+	<key>Private renewal history</key>
+	<string>Private renewal history</string>
+	<key>Profile name</key>
+	<string>Profile name</string>
+	<key>Properties and components</key>
+	<string>Properties and components</string>
+	<key>Protected by macOS Keychain</key>
+	<string>Protected by macOS Keychain</string>
+	<key>Publisher claim: %arg</key>
+	<string>Publisher claim: %arg</string>
+	<key>Publisher identity is not independently verified. Review every download host before continuing.</key>
+	<string>Publisher identity is not independently verified. Review every download host before continuing.</string>
+	<key>Quiet hours for renewal notifications</key>
+	<string>Quiet hours for renewal notifications</string>
+	<key>Quiet hours suppress banners, not eligible renewals. Equal start and end means quiet all day.</key>
+	<string>Quiet hours suppress banners, not eligible renewals. Equal start and end means quiet all day.</string>
+	<key>Quiet renewal notifications</key>
+	<string>Quiet renewal notifications</string>
+	<key>Quit Slip</key>
+	<string>Quit Slip</string>
+	<key>Recent events</key>
+	<string>Recent events</string>
+	<key>Recovery</key>
+	<string>Recovery</string>
+	<key>Refresh</key>
+	<string>Refresh</string>
+	<key>Refresh Devices</key>
+	<string>Refresh Devices</string>
+	<key>Refresh Due</key>
+	<string>Refresh Due</string>
+	<key>Refresh Resource Status</key>
+	<string>Refresh Resource Status</string>
+	<key>Refresh about 24 hours before the free seven-day profile expires</key>
+	<string>Refresh about 24 hours before the free seven-day profile expires</string>
+	<key>Refresh all</key>
+	<string>Refresh all</string>
+	<key>Refresh server list</key>
+	<string>Refresh server list</string>
+	<key>Refresh this Mac's identity</key>
+	<string>Refresh this Mac's identity</string>
+	<key>Refreshing %arg…</key>
+	<string>Refreshing %arg…</string>
+	<key>Registered App IDs</key>
+	<string>Registered App IDs</string>
+	<key>Release and IPA asset</key>
+	<string>Release and IPA asset</string>
+	<key>Remote compatibility</key>
+	<string>Remote compatibility</string>
+	<key>Remove</key>
+	<string>Remove</string>
+	<key>Remove %arg from queue</key>
+	<string>Remove %arg from queue</string>
+	<key>Remove Account</key>
+	<string>Remove Account</string>
+	<key>Remove All</key>
+	<string>Remove All</string>
+	<key>Remove IPA</key>
+	<string>Remove IPA</string>
+	<key>Remove Profile Picture</key>
+	<string>Remove Profile Picture</string>
+	<key>Remove Source</key>
+	<string>Remove Source</string>
+	<key>Remove from Library</key>
+	<string>Remove from Library</string>
+	<key>Remove from queue</key>
+	<string>Remove from queue</string>
+	<key>Remove supported-device model restriction</key>
+	<string>Remove supported-device model restriction</string>
+	<key>Remove this saved account?</key>
+	<string>Remove this saved account?</string>
+	<key>Renewal Assurance</key>
+	<string>Renewal Assurance</string>
+	<key>Renewal issue: %arg</key>
+	<string>Renewal issue: %arg</string>
+	<key>Renewal notifications</key>
+	<string>Renewal notifications</string>
+	<key>Request increased-memory entitlement</key>
+	<string>Request increased-memory entitlement</string>
+	<key>Resend</key>
+	<string>Resend</string>
+	<key>Resend Code</key>
+	<string>Resend Code</string>
+	<key>Reset</key>
+	<string>Reset</string>
+	<key>Resume Background Refresh</key>
+	<string>Resume Background Refresh</string>
+	<key>Resume Download</key>
+	<string>Resume Download</string>
+	<key>Retest Connection</key>
+	<string>Retest Connection</string>
+	<key>Retry Discovery</key>
+	<string>Retry Discovery</string>
+	<key>Retry Failed Targets Only</key>
+	<string>Retry Failed Targets Only</string>
+	<key>Retry Safely</key>
+	<string>Retry Safely</string>
+	<key>Review Entitlement Differences</key>
+	<string>Review Entitlement Differences</string>
+	<key>Review Saved Source…</key>
+	<string>Review Saved Source…</string>
+	<key>Review before sharing. Only fixed diagnostic categories, recovery actions and numeric software versions are included. Free-form logs, identities, paths and private context are excluded.</key>
+	<string>Review before sharing. Only fixed diagnostic categories, recovery actions and numeric software versions are included. Free-form logs, identities, paths and private context are excluded.</string>
+	<key>Revoke All…</key>
+	<string>Revoke All…</string>
+	<key>Revoke Certificate</key>
+	<string>Revoke Certificate</string>
+	<key>Revoke Selected…</key>
+	<string>Revoke Selected…</string>
+	<key>Revoke this development certificate?</key>
+	<string>Revoke this development certificate?</string>
+	<key>Revoke…</key>
+	<string>Revoke…</string>
+	<key>SMS verification required</key>
+	<string>SMS verification required</string>
+	<key>Save Choices</key>
+	<string>Save Choices</string>
+	<key>Save reviewed report…</key>
+	<string>Save reviewed report…</string>
+	<key>Saved IPA is missing</key>
+	<string>Saved IPA is missing</string>
+	<key>Saved IPA: %arg</key>
+	<string>Saved IPA: %arg</string>
+	<key>Saved accounts</key>
+	<string>Saved accounts</string>
+	<key>Saved apps · %arg</key>
+	<string>Saved apps · %arg</string>
+	<key>Schedule</key>
+	<string>Schedule</string>
+	<key>Search apps</key>
+	<string>Search apps</string>
+	<key>Search library</key>
+	<string>Search library</string>
+	<key>Search names, publishers or identifiers</key>
+	<string>Search names, publishers or identifiers</string>
+	<key>Select All</key>
+	<string>Select All</string>
+	<key>Selected</key>
+	<string>Selected</string>
+	<key>Send SMS to %arg</key>
+	<string>Send SMS to %arg</string>
+	<key>Send to Trusted Apple Devices</key>
+	<string>Send to Trusted Apple Devices</string>
+	<key>Settings…</key>
+	<string>Settings…</string>
+	<key>Show</key>
+	<string>Show</string>
+	<key>Show Slip</key>
+	<string>Show Slip</string>
+	<key>Show in Finder</key>
+	<string>Show in Finder</string>
+	<key>Show menu bar companion</key>
+	<string>Show menu bar companion</string>
+	<key>Show saved schedule</key>
+	<string>Show saved schedule</string>
+	<key>Shown until Apple supplies the verified name</key>
+	<string>Shown until Apple supplies the verified name</string>
+	<key>Sign In &amp; Save verifies your credentials with Apple before storing them securely in macOS Keychain. Slip also authenticates when signing apps or managing developer resources. If Apple requires two-factor verification, a six-digit code field appears beneath your password. The field stays in place until Apple finishes verification and prepares the developer session. If Apple already trusts this machine session, sign-in succeeds automatically without needing an OTP.</key>
+	<string>Sign In &amp; Save verifies your credentials with Apple before storing them securely in macOS Keychain. Slip also authenticates when signing apps or managing developer resources. If Apple requires two-factor verification, a six-digit code field appears beneath your password. The field stays in place until Apple finishes verification and prepares the developer session. If Apple already trusts this machine session, sign-in succeeds automatically without needing an OTP.</string>
+	<key>Signed in and saved securely</key>
+	<string>Signed in and saved securely</string>
+	<key>Signing capabilities need review</key>
+	<string>Signing capabilities need review</string>
+	<key>Slip</key>
+	<string>Slip</string>
+	<key>Slip Renewal Assurance</key>
+	<string>Slip Renewal Assurance</string>
+	<key>Slip does not upload your IPA or Apple Account credentials to its own service. The selected authentication source prepares data for Apple sign-in. Apple’s sign-in response supplies the profile name; Apple does not expose the private Apple Account photo to third-party apps.</key>
+	<string>Slip does not upload your IPA or Apple Account credentials to its own service. The selected authentication source prepares data for Apple sign-in. Apple’s sign-in response supplies the profile name; Apple does not expose the private Apple Account photo to third-party apps.</string>
+	<key>Slip is not affiliated with or endorsed by Droppy. This adapted native interface is licensed under GNU AGPL v3 with upstream additional terms.</key>
+	<string>Slip is not affiliated with or endorsed by Droppy. This adapted native interface is licensed under GNU AGPL v3 with upstream additional terms.</string>
+	<key>Slip renewal companion</key>
+	<string>Slip renewal companion</string>
+	<key>Slip retries transient failures and validates the archive before it becomes installable.</key>
+	<string>Slip retries transient failures and validates the archive before it becomes installable.</string>
+	<key>Slip uses this computer name for new development certificates. This Mac requires local authentication data from macOS; availability depends on the macOS version and Apple permissions. Remote compatibility is an explicit choice and may show another device in Apple alerts. Developer sign-in does not add this Mac as a trusted Apple Account device.</key>
+	<string>Slip uses this computer name for new development certificates. This Mac requires local authentication data from macOS; availability depends on the macOS version and Apple permissions. Remote compatibility is an explicit choice and may show another device in Apple alerts. Developer sign-in does not add this Mac as a trusted Apple Account device.</string>
+	<key>Smooth animations</key>
+	<string>Smooth animations</string>
+	<key>Solid</key>
+	<string>Solid</string>
+	<key>Source</key>
+	<string>Source</string>
+	<key>Source properties are read from the archive; customization applies only when preparing or signing.</key>
+	<string>Source properties are read from the archive; customization applies only when preparing or signing.</string>
+	<key>Source-provided artwork preview</key>
+	<string>Source-provided artwork preview</string>
+	<key>Source: %arg</key>
+	<string>Source: %arg</string>
+	<key>Stop Queue</key>
+	<string>Stop Queue</string>
+	<key>Stop managing</key>
+	<string>Stop managing</string>
+	<key>Submit Code</key>
+	<string>Submit Code</string>
+	<key>Support Report</key>
+	<string>Support Report</string>
+	<key>Targets use this reviewed account and options; signing remains sequential. Quotas and capabilities are checked per install.</key>
+	<string>Targets use this reviewed account and options; signing remains sequential. Quotas and capabilities are checked per install.</string>
+	<key>Technical key</key>
+	<string>Technical key</string>
+	<key>The IPA could not be validated</key>
+	<string>The IPA could not be validated</string>
+	<key>The connection timed out</key>
+	<string>The connection timed out</string>
+	<key>The saved IPA is missing</key>
+	<string>The saved IPA is missing</string>
+	<key>The selected iPhone is unavailable</key>
+	<string>The selected iPhone is unavailable</string>
+	<key>These files move to the Bin and can be restored from Finder. Source files outside managed storage are never deleted.</key>
+	<string>These files move to the Bin and can be restored from Finder. Source files outside managed storage are never deleted.</string>
+	<key>Third-party notices</key>
+	<string>Third-party notices</string>
+	<key>This IPA uses one App ID.</key>
+	<string>This IPA uses one App ID.</string>
+	<key>This Mac</key>
+	<string>This Mac</string>
+	<key>This checks the service connection. Apple may still require verification or decline a sign-in.</key>
+	<string>This checks the service connection. Apple may still require verification or decline a sign-in.</string>
+	<key>This removes %arg and their matching Slip Auto Refresh schedules. iOS also deletes their local app data. This cannot be undone.</key>
+	<string>This removes %arg and their matching Slip Auto Refresh schedules. iOS also deletes their local app data. This cannot be undone.</string>
+	<key>This removes the saved password, local signing session, and this account's automatic refresh schedules from Slip. Apple certificates and App IDs remain on your account.</key>
+	<string>This removes the saved password, local signing session, and this account's automatic refresh schedules from Slip. Apple certificates and App IDs remain on your account.</string>
+	<key>Trusted Wi-Fi is ready</key>
+	<string>Trusted Wi-Fi is ready</string>
+	<key>Type</key>
+	<string>Type</string>
+	<key>Typed, top-level values; identity-critical keys are protected.</key>
+	<string>Typed, top-level values; identity-critical keys are protected.</string>
+	<key>Uninstall</key>
+	<string>Uninstall</string>
+	<key>Uninstall %arg App%arg?</key>
+	<string>Uninstall %arg App%arg?</string>
+	<key>Uninstall…</key>
+	<string>Uninstall…</string>
+	<key>Unlock your iPhone, connect USB, and tap Trust.</key>
+	<string>Unlock your iPhone, connect USB, and tap Trust.</string>
+	<key>Until</key>
+	<string>Until</string>
+	<key>Updates for %arg</key>
+	<string>Updates for %arg</string>
+	<key>Updates…</key>
+	<string>Updates…</string>
+	<key>Updating server list</key>
+	<string>Updating server list</string>
+	<key>Use</key>
+	<string>Use</string>
+	<key>Use HTTPS, or HTTP for a server running on this Mac.</key>
+	<string>Use HTTPS, or HTTP for a server running on this Mac.</string>
+	<key>Use This Mac</key>
+	<string>Use This Mac</string>
+	<key>Use Updates to follow a release source, or Manage App for presets, history and optional managed storage. Removing a library entry keeps its IPA and Auto Refresh schedule.</key>
+	<string>Use Updates to follow a release source, or Manage App for presets, history and optional managed storage. Removing a library entry keeps its IPA and Auto Refresh schedule.</string>
+	<key>Uses authentication data generated by this Mac. Sign-in stops if macOS cannot provide it. Slip never switches to an external service automatically.</key>
+	<string>Uses authentication data generated by this Mac. Sign-in stops if macOS cannot provide it. Slip never switches to an external service automatically.</string>
+	<key>Uses only the server you choose. Apple may show a different device in its sign-in alert.</key>
+	<string>Uses only the server you choose. Apple may show a different device in its sign-in alert.</string>
+	<key>Verification code</key>
+	<string>Verification code</string>
+	<key>Verify</key>
+	<string>Verify</string>
+	<key>Verify Device Installation</key>
+	<string>Verify Device Installation</string>
+	<key>Version history</key>
+	<string>Version history</string>
+	<key>View on GitHub</key>
+	<string>View on GitHub</string>
+	<key>Why this matters</key>
+	<string>Why this matters</string>
+	<key>Window backdrop</key>
+	<string>Window backdrop</string>
+	<key>Your apps · %arg</key>
+	<string>Your apps · %arg</string>
+	<key>Your choice also applies when copying the log.</key>
+	<string>Your choice also applies when copying the log.</string>
+	<key>Your free Apple Account has used all available App IDs for this seven-day period. Each app and kept extension needs one ID. You can remove optional extensions to reduce the count, wait for Apple's quota to reset, or manage existing App IDs in Apple Accounts.</key>
+	<string>Your free Apple Account has used all available App IDs for this seven-day period. Each app and kept extension needs one ID. You can remove optional extensions to reduce the count, wait for Apple's quota to reset, or manage existing App IDs in Apple Accounts.</string>
+	<key>Your iPhones</key>
+	<string>Your iPhones</string>
+	<key>https://example.com/App.ipa</key>
+	<string>https://example.com/App.ipa</string>
+	<key>https://your-server.example or http://127.0.0.1:6969</key>
+	<string>https://your-server.example or http://127.0.0.1:6969</string>
+	<key>iPhone</key>
+	<string>iPhone</string>
+	<key>iPhone trust needs attention</key>
+	<string>iPhone trust needs attention</string>
+	<key>macOS servers</key>
+	<string>macOS servers</string>
+	<key>name@example.com</key>
+	<string>name@example.com</string>
+	<key>·</key>
+	<string>·</string>
+</dict>
+</plist>

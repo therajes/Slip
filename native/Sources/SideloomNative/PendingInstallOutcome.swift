@@ -50,6 +50,7 @@ extension AppModel {
             let event = try await CoreClient().run(["reconcile-install"], input: record)
             if event.type == "noTransfer", event.operationId == record.operationId {
                 guard await reconcileDeploymentOutcome(operationID: record.operationId, verified: false, noTransfer: true) else { return }
+                try reconcileRenewalRecord(record.operationId, verified: false)
                 try await PendingOutcomeStore.shared.clear(operationId: record.operationId)
                 currentStage = "Review required"
                 appendActivity("The previous operation stopped before transfer. Review its workspace before starting again.")
@@ -89,6 +90,8 @@ extension AppModel {
                         try await store.record(workspaceID: saved.id, ipa: ipa, installed: true)
                     }
                 }
+                try reconcileRenewalRecord(record.operationId, verified: true)
+                reloadManagedInstallations()
                 currentStage = "Previous installation verified"
                 appendActivity("The intended iPhone confirms the previous app installation. Review its renewal recipe before another install.")
                 try await PendingOutcomeStore.shared.clear(operationId: record.operationId)
@@ -102,6 +105,23 @@ extension AppModel {
             try? await PendingOutcomeStore.shared.save(record)
             diagnostic = SlipDiagnostic(code: .verificationPending, phase: "verify", severity: .warning, retryable: true, recovery: .verifyInstallation)
             currentStage = "Verification pending"
+        }
+    }
+}
+
+extension AppModel {
+    private func reconcileRenewalRecord(_ operationID: String, verified: Bool) throws {
+        try AutoRefreshStore.update { entries in
+            for index in entries.indices where entries[index].pendingOperationID == operationID {
+                entries[index].pendingOperationID = nil
+                entries[index].actionRequired = !verified
+                entries[index].reasonCode = verified ? "install.verified" : "operation.review_required"
+                if verified {
+                    entries[index].lastVerifiedAt = Date()
+                    entries[index].retryCount = 0
+                    entries[index].nextEligibleAt = nil
+                }
+            }
         }
     }
 }

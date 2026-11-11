@@ -36,6 +36,11 @@ extension AppModel {
             errorMessage = "Slip is busy with another installation or renewal. Try again when it finishes."
             return false
         }
+        guard item.pendingOperationID == nil else {
+            handle.end()
+            errorMessage = "Verify the previous installation on the intended iPhone before refreshing again."
+            return false
+        }
         activeOperationHandle = handle
         activeRefreshID = id
         operationCancelled = false
@@ -58,6 +63,15 @@ extension AppModel {
             guard FileManager.default.fileExists(atPath: item.ipaPath) else {
                 throw SideloomError.message("The saved IPA is missing. Choose a replacement IPA in Auto Refresh.")
             }
+            let path = item.ipaPath
+            let digest = try await Task.detached { try DeploymentJob.sourceHash(path) }.value
+            let iconPath = item.options.customIconPath
+            let iconDigest = try await Task.detached { try iconPath.map(DeploymentJob.sourceHash) }.value
+            guard digest == item.approvedSourceSHA256,
+                  try DeploymentJob.optionsHash(item.options) == item.reviewedOptionsSHA256,
+                  iconPath == nil || iconDigest == item.approvedIconSHA256 else {
+                throw SideloomError.message("Review and approve this saved source in Renewal Assurance before renewing. Source or signing choices changed.")
+            }
             let inspection = try await core.run(["inspect", item.ipaPath])
             guard !operationCancelled else { return false }
             guard let info = inspection.ipa, info.encryptionStatus != "Encrypted" else {
@@ -72,6 +86,13 @@ extension AppModel {
                 .sorted(by: { $0.connectionType == "USB" && $1.connectionType != "USB" }).first else {
                 throw SideloomError.message("Connect \(item.deviceName), unlock it, then refresh again.")
             }
+            var reviewed = item
+            reviewed.enabled = true // Explicit foreground renewal does not change the background pause preference.
+            reviewed.actionRequired = false
+            if reviewed.status == "Needs attention" { reviewed.status = "Scheduled" }
+            let decision = RenewalEngine.evaluate(reviewed, context: .init(now: Date(), matchingDeviceReachable: true,
+                accountUsable: true, sourceMatches: true, force: true))
+            guard decision.eligible else { throw SideloomError.message(decision.nextAction) }
             let request = InstallRequest(email: item.account, password: try KeychainStore.password(for: item.account),
                                          anisetteServer: anisetteServer, storagePath: try accountStorageURL(for: item.account).path,
                                          device: device, options: item.options, authenticationMode: authenticationMode)
@@ -82,12 +103,51 @@ extension AppModel {
             if !operationCancelled { errorMessage = friendlyMessage(for: error); currentStage = "Refresh needs attention" }
             var updated = item
             updated.status = "Needs attention"
+            updated.actionRequired = true
+            updated.reasonCode = "operation.interaction_required"
             updated.lastError = errorMessage ?? "Refresh cancelled."
             updated.lastAttemptAt = Date()
             updated.nextRefreshAt = Date().addingTimeInterval(30 * 60)
             try? AutoRefreshStore.mergeOutcome(updated, original: item)
             return false
         }
+    }
+
+    func approveRenewalSource(_ id: String) async {
+        guard !workspaceIsBusy, let item = AutoRefreshStore.load().first(where: { $0.id == id }), item.pendingOperationID == nil,
+              let handle = OperationCoordinator.beginOperation(type: .refresh, appName: "Reviewing renewal source") else {
+            errorMessage = "Finish or verify the current operation before approving a source."
+            return
+        }
+        defer { handle.end() }
+        do {
+            let path = item.ipaPath
+            let values = try URL(fileURLWithPath: path).resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isRegularFile == true, values.isSymbolicLink != true else { throw SideloomError.message("Select a regular saved IPA before approval.") }
+            let before = IPAFileStamp.read(path)
+            let digest = try await Task.detached { try DeploymentJob.sourceHash(path) }.value
+            let iconPath = item.options.customIconPath
+            let iconDigest = try await Task.detached { try iconPath.map(DeploymentJob.sourceHash) }.value
+            let inspected = try await core.run(["inspect", path])
+            guard let info = inspected.ipa, info.encryptionStatus != "Encrypted", before == IPAFileStamp.read(path),
+                  item.options.bundleId != nil || info.bundleId == item.bundleId else { throw SideloomError.message("The source changed or does not match this app. Review the IPA in Install.") }
+            let optionsDigest = try DeploymentJob.optionsHash(item.options)
+            try AutoRefreshStore.update { entries in
+                guard let index = entries.firstIndex(where: { $0.id == id && $0.options == item.options && $0.account == item.account && $0.pendingOperationID == nil }) else { throw SideloomError.message("The renewal changed during review. Review again.") }
+                entries[index].approvedSourceSHA256 = digest
+                entries[index].reviewedOptionsSHA256 = optionsDigest
+                entries[index].approvedIconSHA256 = iconDigest
+                entries[index].actionRequired = false
+                entries[index].reasonCode = "refresh.source_approved"
+                entries[index].retryCount = 0
+                entries[index].nextEligibleAt = nil
+                entries[index].lastError = nil
+                entries[index].status = entries[index].enabled ? "Scheduled" : "Paused"
+                entries[index].teamReference = resourcesAccount == item.account ? resourcesTeamID : nil
+            }
+            reloadManagedInstallations()
+            appendActivity("Renewal source reviewed. Approval does not mean a renewal has run.")
+        } catch { errorMessage = error.localizedDescription }
     }
 
     func refreshAllManagedInstallations() {
@@ -109,8 +169,8 @@ extension AppModel {
             try AutoRefreshStore.update { installations in
                 guard let index = installations.firstIndex(where: { $0.id == id }) else { return }
                 installations[index].enabled = enabled
-                installations[index].status = enabled ? "Scheduled" : "Paused"
-                installations[index].lastError = nil
+                if !enabled { installations[index].status = "Paused" }
+                else { installations[index].status = RenewalEngine.status(for: installations[index]).rawValue }
             }
             reloadManagedInstallations()
         } catch {

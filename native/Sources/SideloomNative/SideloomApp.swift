@@ -15,6 +15,7 @@ struct SlipApp: App {
         Settings {
             AppearanceSettingsView()
                 .environmentObject(applicationDelegate.appearance)
+                .environmentObject(applicationDelegate.model)
                 .frame(width: 760, height: 680)
         }
         .commands {
@@ -51,12 +52,13 @@ final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
     private var waitingToTerminate = false
     private var notificationObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
-    private var recoveryRunning = false
+    private var hintObserver: NSObjectProtocol?
+    private var companion: CompanionCoordinator?
 
     override init() {
         let isWorker = CommandLine.arguments.contains("--refresh-due")
         workerMode = isWorker
-        model = AppModel(startupTasks: !isWorker)
+        model = AppModel(startupTasks: !isWorker, loadSavedState: !isWorker)
         super.init()
     }
 
@@ -77,15 +79,12 @@ final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
                 }
             }
             showMainWindow()
+            companion = CompanionCoordinator(model: model, open: { [weak self] in self?.showMainWindow() }, install: { [weak self] in self?.openIPA() })
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self, !self.recoveryRunning else { return }
-                    self.recoveryRunning = true
-                    defer { self.recoveryRunning = false }
-                    _ = await AutoRefreshWorker.runDue()
-                    self.model.reloadManagedInstallations()
-                    await self.model.refreshDevices()
-                }
+                Task { @MainActor [weak self] in self?.companion?.requestRenewalCheck() }
+            }
+            hintObserver = NotificationCenter.default.addObserver(forName: .slipRenewalHint, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.companion?.requestRenewalCheck() }
             }
         }
     }
@@ -172,6 +171,9 @@ final class SlipApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
 
     func applicationWillTerminate(_ notification: Notification) {
         if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
+        if let notificationObserver { NotificationCenter.default.removeObserver(notificationObserver) }
+        if let hintObserver { NotificationCenter.default.removeObserver(hintObserver) }
+        companion?.stop()
         model.deviceMonitor?.stop()
     }
 

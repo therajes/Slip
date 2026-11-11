@@ -28,6 +28,7 @@ jobs:
       SLIP_PRODUCTION_SIGNING: ${{ github.event_name != 'pull_request' && vars.SLIP_PRODUCTION_SIGNING || '0' }}
       SLIP_DEVELOPER_ID: ${{ secrets.SLIP_DEVELOPER_ID }}
       SLIP_NOTARY_PROFILE: ${{ secrets.SLIP_NOTARY_PROFILE }}
+      SLIP_DEVELOPER_TEAM_ID: ${{ vars.SLIP_DEVELOPER_TEAM_ID }}
     outputs:
       version: ${{ steps.metadata.outputs.version }}
       dmg_name: ${{ steps.metadata.outputs.dmg_name }}
@@ -124,6 +125,9 @@ jobs:
           fi
           printf '### Slip DMG\n\nBuilt from `%s`. %s\n' "$GITHUB_SHA" "$signing_label" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Generate release evidence
+        run: python3 native/release-evidence.py "native/dist/${{ steps.metadata.outputs.dmg_name }}" native/dist
+
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v7
         with:
@@ -131,6 +135,8 @@ jobs:
           path: |
             native/dist/${{ steps.metadata.outputs.dmg_name }}
             native/dist/SHA256SUMS.txt
+            native/dist/PROVENANCE.json
+            native/dist/SBOM.spdx.json
           if-no-files-found: error
           retention-days: 14
 
@@ -177,6 +183,8 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             "release-assets/$DMG_NAME" \
             release-assets/SHA256SUMS.txt \
+            release-assets/PROVENANCE.json \
+            release-assets/SBOM.spdx.json \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --target "$GITHUB_SHA" \

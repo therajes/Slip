@@ -1,0 +1,9 @@
+# Authentic update delivery evaluation
+
+Slip uses a custom AppKit window, Swift Package executable and manual bundle assembly. Sparkle 2 is compatible in principle with this lifecycle and Swift Package Manager, but integration requires embedding the framework/helpers, matching code signing and configuring a controlled HTTPS appcast plus Ed25519 public key. Update private keys must stay in external secure storage, never argv or git. Framework versions must be pinned and reviewed against security advisories.
+
+No controlled signed appcast, public EdDSA update identity, production Developer ID/notary credentials or clean-machine transition evidence is established in this checkout. Therefore 3.0 uses explicit manual updates; it does not offer automatic download/install or trust a package solely because its checksum arrived beside it. This is an external production-delivery blocker, not a fabricated updater implementation. A future gated integration must test downgrade rejection, spoofed feed, tampered packages, interrupted upgrade/rollback, helper/library validation and transition from ad-hoc builds before exposing automatic checks.
+
+Primary references consulted: [Sparkle setup](https://sparkle-project.org/documentation/), [signing and services](https://sparkle-project.org/documentation/sandboxing/), [security updates](https://sparkle-project.org/documentation/security-and-reliability/), [configuration](https://sparkle-project.org/documentation/customization/).
+
+Safe manual route: open the explicit Slip GitHub release, confirm its version/notes/signing label, preserve the old app/private metadata checkpoint, stop operations normally, verify app bundle/core/helper versions and signatures, then stage and replace the app. SHA256 detects corruption only. If the signing team changes, explain the potential Keychain authorization prompt; never clear existing credentials to bypass it.

@@ -18,11 +18,11 @@ A failed test or packaging check stops the build. New pushes cancel superseded b
 
 Update `native/Info.plist`, `package.json`, `src-tauri/Cargo.toml`, the root `sideloom` entry in `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json` to the same version. Add its changelog entry and `docs/RELEASE_NOTES_<version>.md`, then commit and push to `main`.
 
-After the branch build passes, tag that tested commit. For Slip 2.8.0, only after explicit publishing approval:
+After the branch build passes, tag that tested commit. For Slip 3.0.0, only after explicit publishing approval:
 
 ```sh
-git tag -a v2.8.0 -m "Slip 2.8.0"
-git push origin v2.8.0
+git tag -a v3.0.0 -m "Slip 3.0.0"
+git push origin v3.0.0
 ```
 
 The tag starts a complete build. Once every check passes, a separate job downloads that run's artifact, verifies its checksum, and creates the GitHub Release with the DMG, checksum and version's release notes. A mismatched version tag is rejected. Existing tags and releases are not overwritten.
@@ -57,3 +57,14 @@ CI uses the repository variable `SLIP_PRODUCTION_SIGNING=1` and secrets `SLIP_DE
 ## 2.8 validation
 
 Run all commands listed in [the manual matrix](MANUAL_TEST_MATRIX_2.8.0.md). Record exact results in the release report. Never infer live SMS, USB/Wi-Fi, notification delivery or Gatekeeper results from unit tests. Do not tag or publish a release without explicit approval.
+
+
+## 3.0 local-first release gate
+
+The user tests the installed local candidate first. Do not push, tag, publish or automatically replace it from a feed until the user gives the release flag. Run the exact existing tests/build/DMG commands and record results separately from live user verification. Generate evidence with `python3 native/release-evidence.py native/dist/Slip-3.0.0.dmg native/dist`. Scanner tools are optional: missing tools are NOT RUN, not a clean security result; findings require review. SPDX output inventories Cargo.lock and does not claim all OS/framework dependencies or audited licenses.
+
+Production mode additionally requires `SLIP_DEVELOPER_TEAM_ID`, matching the installed Developer ID identity. Verification checks app/core/helper version, identifiers, arm64 architecture and signatures; production mode additionally checks Hardened Runtime, timestamp and expected team before notarization. Signing references must be preinstalled in an isolated trusted runner keychain; private keys/passwords never enter the checkout, CLI arguments or logs. Clean-machine Gatekeeper acceptance remains a separate manual gate.
+
+After a tested release is approved, publish the DMG, checksum, PROVENANCE.json and SBOM.spdx.json from the tag workflow. Provenance records commit, dirty worktree flag and lock/artifact hashes. An SHA-256 file is corruption evidence, not an independent authenticity trust anchor.
+
+Rollback: retain the previous signed app and private data checkpoint. Quit Slip normally after active operations stop, stage the replacement, verify bundle/signing identity and rename with rollback. Never restore an older metadata snapshot over newer user edits without explicit review; never export/reset Keychain or pairing material. A signing-team transition can require renewed Keychain permission. Current 3.0 does not provide a silent updater or privileged installation helper.

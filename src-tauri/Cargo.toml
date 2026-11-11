@@ -1,6 +1,6 @@
 [package]
 name = "sideloom"
-version = "2.9.2"
+version = "3.0.0"
 description = "Mac-first IPA inspector, customizer, signer, and installer"
 authors = ["nab138"]
 edition = "2024"
@@ -40,7 +40,6 @@ isideload = { version = "0.3.17", default-features = false, features = ["fs-stor
 keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "linux-native-sync-persistent"], optional = true }
 tauri-plugin-store = { version = "2", optional = true }
 futures = "0.3.31"
-once_cell = "1.21.3"
 tauri-plugin-dialog = { version = "2", optional = true }
 reqwest = { version = "0.13.2", default-features = false, features = ["rustls-no-provider", "http2", "system-proxy"] }
 tokio = "1.49.0"

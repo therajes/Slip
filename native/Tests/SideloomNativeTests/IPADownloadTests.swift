@@ -10,6 +10,25 @@ private final class DownloadProgressRecorder: @unchecked Sendable {
 }
 
 final class IPADownloadTests: XCTestCase, @unchecked Sendable {
+    func testProgressRateExcludesServerWaitAndThrottlesBurstCallbacks() {
+        var clock = IPADownloadProgressClock()
+        // A long DNS/redirect/header wait does not become part of transfer throughput.
+        XCTAssertEqual(clock.report(total: 1000, expected: 10000, now: 50), 0)
+        for offset in 1..<100 {
+            XCTAssertNil(clock.report(total: Int64(1000 + offset), expected: 10000, now: 50 + Double(offset) / 1000))
+        }
+        XCTAssertEqual(clock.report(total: 3000, expected: 10000, now: 50.2) ?? -1, 10000, accuracy: 0.01)
+        XCTAssertNotNil(clock.report(total: 10000, expected: 10000, now: 50.21), "Completion must not wait for the UI interval.")
+        XCTAssertNil(clock.report(total: 10000, expected: 10000, now: 50.22), "Completion is published once.")
+    }
+
+    func testUnknownLengthStillPublishesBoundedProgress() {
+        var clock = IPADownloadProgressClock()
+        XCTAssertNotNil(clock.report(total: 1024, expected: -1, now: 1))
+        XCTAssertNil(clock.report(total: 2048, expected: -1, now: 1.01))
+        XCTAssertNotNil(clock.report(total: 4096, expected: -1, now: 1.2))
+    }
+
     private func fixture() async throws -> (URL, URL) {
         let root = FileManager.default.temporaryDirectory.appending(path: "SlipDownload-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

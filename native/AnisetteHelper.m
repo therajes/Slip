@@ -99,7 +99,14 @@ static NSDictionary *localAuthenticationData(NSString **failureCode) {
     return validatedAuthenticationData(headers, deviceID, failureCode);
 }
 
+#ifndef SLIP_BUILD_VERSION
+#define SLIP_BUILD_VERSION "development"
+#endif
 int main(int argc, const char *argv[]) {
+    if (argc == 2 && strcmp(argv[1], "--version") == 0) {
+        puts(SLIP_BUILD_VERSION);
+        return 0;
+    }
     @autoreleasepool {
         BOOL checkOnly = argc == 2 && strcmp(argv[1], "--check") == 0;
         NSDictionary *result = nil;

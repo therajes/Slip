@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SlipNative",
+    defaultLocalization: "en",
     platforms: [.macOS(.v26)],
     products: [
         .executable(name: "SlipNative", targets: ["SideloomNative"])
@@ -16,6 +17,7 @@ let package = Package(
         .executableTarget(
             name: "SideloomNative",
             dependencies: ["DroppyWindowBridge"],
+            resources: [.copy("Localization/Localizable.xcstrings"), .process("Localization/en.lproj")],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Security")

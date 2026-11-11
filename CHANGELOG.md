@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0 — local testing candidate
+
+- Add shared renewal eligibility, durable reasons/backoff, source review and pending-outcome protection.
+- Add optional native menu companion, separate background/login preferences and Renewal Assurance.
+- Preserve 2.9.2 capability acknowledgement and auto-accept behavior.
+- Add English localization resources, onboarding and release artifact provenance/version checks.
+- Keep production credentials and live user testing as explicit release gates; not published.
+
+
 ## 2.9.2 — 2026-11-09
 
 - Auto-accept capability changes during installation and refresh without interrupting with modal review prompts.

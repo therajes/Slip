@@ -316,7 +316,11 @@ pub async fn install_sidestore_operation(
 }
 
 pub async fn download(url: impl AsRef<str>, dest: &PathBuf) -> Result<(), AppError> {
-    let response = reqwest::get(url.as_ref())
+    use std::sync::LazyLock;
+    use tokio::io::AsyncWriteExt;
+
+    static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
+    let mut response = CLIENT.get(url.as_ref()).send()
         .await
         .map_err(|e| AppError::Download(e.to_string()))?;
     if !response.status().is_success() {
@@ -326,12 +330,17 @@ pub async fn download(url: impl AsRef<str>, dest: &PathBuf) -> Result<(), AppErr
         )));
     }
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| AppError::Download(e.to_string()))?;
-    tokio::fs::write(dest, &bytes).await.map_err(|e| {
-        AppError::Filesystem("Failed to write downloaded file".into(), e.to_string())
+    let file = tokio::fs::File::create(dest).await.map_err(|e| {
+        AppError::Filesystem("Failed to create download file".into(), e.to_string())
+    })?;
+    let mut writer = tokio::io::BufWriter::with_capacity(256 * 1024, file);
+    while let Some(chunk) = response.chunk().await.map_err(|e| AppError::Download(e.to_string()))? {
+        writer.write_all(&chunk).await.map_err(|e| {
+            AppError::Filesystem("Failed to write downloaded file".into(), e.to_string())
+        })?;
+    }
+    writer.flush().await.map_err(|e| {
+        AppError::Filesystem("Failed to flush downloaded file".into(), e.to_string())
     })?;
 
     Ok(())

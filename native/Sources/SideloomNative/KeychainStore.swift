@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import LocalAuthentication
 
 enum KeychainStore {
     private static let service = "app.sideloom.native.apple-accounts"
@@ -73,6 +74,25 @@ enum KeychainStore {
         }
 
         throw SideloomError.message("The saved password is unavailable. Remove and add this account again.")
+    }
+
+    static func backgroundPasswordQuery(for account: String) -> [String: Any] {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        return [kSecClass as String:kSecClassGenericPassword, kSecAttrService as String:service,
+         kSecAttrAccount as String:account, kSecReturnData as String:true,
+         kSecMatchLimit as String:kSecMatchLimitOne, kSecUseAuthenticationContext as String:context]
+    }
+    /// No authorization UI, attribute updates or account enumeration in a worker.
+    static func backgroundPassword(for account: String) throws -> String {
+        let trimmed = account.trimmingCharacters(in: .whitespacesAndNewlines)
+        for candidate in Set([account,trimmed,trimmed.lowercased()]) {
+            var result: CFTypeRef?
+            let status = SecItemCopyMatching(backgroundPasswordQuery(for: candidate) as CFDictionary, &result)
+            if status == errSecSuccess, let data = result as? Data, let password = String(data:data,encoding:.utf8) { return password }
+            if status != errSecItemNotFound { break }
+        }
+        throw SideloomError.message("Open Slip to unlock or authorize the saved Apple Account password.")
     }
 
     static func save(account: String, password: String) throws {

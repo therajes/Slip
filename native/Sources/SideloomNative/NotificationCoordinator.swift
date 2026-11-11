@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import UserNotifications
 
 final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
@@ -21,15 +22,26 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate,
     }
     static func shouldDeliver(enabled: Bool, authorized: Bool, alertsEnabled: Bool, lastDelivered: Date?, now: Date, category: Category) -> Bool {
         guard enabled && authorized && alertsEnabled else { return false }
-        if category == .appExpiring, let lastDelivered, now.timeIntervalSince(lastDelivered) < 24 * 3600 { return false }
+        if category == .appExpiring || category == .refreshFailed, let lastDelivered, now.timeIntervalSince(lastDelivered) < 24 * 3600 { return false }
         return true
     }
-    func deliver(_ category: Category) async {
+    static func isQuiet(hour: Int, enabled: Bool, start: Int, end: Int) -> Bool {
+        guard enabled else { return false }
+        if start == end { return true }
+        return start < end ? (start..<end).contains(hour) : hour >= start || hour < end
+    }
+    static func deliveryScope(installationID: String?, reason: String?) -> String {
+        SHA256.hash(data: Data(((installationID ?? "all") + "|" + (reason ?? "general")).utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+    func deliver(_ category: Category, installationID: String? = nil, reason: String? = nil) async {
         guard UserDefaults.standard.bool(forKey: "renewalNotificationsEnabled") else { return }
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
-        let deliveryKey = "notificationLastDelivered." + category.rawValue
+        let defaults = UserDefaults.standard
+        guard !Self.isQuiet(hour: Calendar.current.component(.hour, from: Date()), enabled: defaults.bool(forKey: "renewalQuietHoursEnabled"), start: defaults.object(forKey: "renewalQuietStart") as? Int ?? 22, end: defaults.object(forKey: "renewalQuietEnd") as? Int ?? 8) else { return }
+        let scope = Self.deliveryScope(installationID: installationID, reason: reason)
+        let deliveryKey = "notificationLastDelivered." + category.rawValue + "." + scope
         let now = Date()
         guard Self.shouldDeliver(enabled: true, authorized: true, alertsEnabled: settings.alertSetting == .enabled,
             lastDelivered: UserDefaults.standard.object(forKey: deliveryKey) as? Date, now: now, category: category) else { return }
@@ -42,9 +54,10 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate,
         case .queueCompleted: "The reviewed installation queue has finished. Open Slip for outcomes."
         }
         content.categoryIdentifier = category.rawValue
+        if let installationID { content.userInfo["installation"] = Self.deliveryScope(installationID: installationID, reason: nil) }
         // No private account/device information or audible sound in a quiet notification.
         do {
-            try await center.add(UNNotificationRequest(identifier: category.rawValue, content: content, trigger: nil))
+            try await center.add(UNNotificationRequest(identifier: category.rawValue + "." + scope, content: content, trigger: nil))
             UserDefaults.standard.set(now, forKey: deliveryKey)
         } catch {
             // Delivery failure leaves the preference unchanged and permits a later retry.
@@ -52,6 +65,9 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate,
     }
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let actionIdentifier = response.actionIdentifier
+        if let scope = response.notification.request.content.userInfo["installation"] as? String {
+            UserDefaults.standard.set(scope, forKey: "notificationPendingInstallation")
+        }
         await MainActor.run {
             NotificationCenter.default.post(name: .slipNotificationAction, object: nil, userInfo: ["action": actionIdentifier])
         }

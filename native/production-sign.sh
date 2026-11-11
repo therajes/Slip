@@ -3,6 +3,7 @@ set -euo pipefail
 # Identity and notary keychain profile must be provisioned securely by the operator.
 [[ $# == 2 ]] || { print -u2 'Usage: production-sign.sh app|dmg path'; exit 2; }
 : ${SLIP_DEVELOPER_ID:?Set a Developer ID Application signing identity}
+: ${SLIP_DEVELOPER_TEAM_ID:?Set the expected Developer ID team identifier}
 : ${SLIP_NOTARY_PROFILE:?Set a notarytool keychain profile}
 [[ "$SLIP_DEVELOPER_ID" == 'Developer ID Application:'* ]] || { print -u2 'Developer ID Application identity required'; exit 1; }
 artifact=${2:A}
@@ -12,6 +13,7 @@ if [[ "$1" == app ]]; then
   done
   codesign --force --options runtime --timestamp --sign "$SLIP_DEVELOPER_ID" "$artifact"
   codesign --verify --deep --strict "$artifact"
+  "${0:A:h}/release-verify.sh" "$artifact"
   staging=$(mktemp -d)
   trap 'rm -rf "$staging"' EXIT
   ditto -c -k --keepParent "$artifact" "$staging/Slip.zip"

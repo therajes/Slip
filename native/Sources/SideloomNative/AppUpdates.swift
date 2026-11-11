@@ -36,9 +36,11 @@ extension AppModel {
         let generation = UUID()
         downloadGeneration = generation
         isDownloading = true; downloadProgress = IPADownloadProgress(); errorMessage = nil
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "app.sideloom.native/Imports")
+        currentStage = "Downloading IPA"
+        let control = downloadControl
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "app.sideloom.native/Imports", directoryHint: .isDirectory)
         let task = Task { [weak self] in
-            try await IPAURLDownloadService().download(release.downloadURL, to: directory) { [weak self] progress in
+            try await IPAURLDownloadService().download(release.downloadURL, to: directory, control: control) { [weak self] progress in
                 Task { @MainActor [weak self] in
                     guard let self, self.downloadGeneration == generation else { return }
                     self.downloadProgress = progress
@@ -78,7 +80,7 @@ extension AppModel {
         let generation = UUID()
         downloadGeneration = generation; isDownloading = true; errorMessage = nil
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "app.sideloom.native/Imports")
-        let task = Task {
+        let task = Task { [weak self] in
             try await IPAURLDownloadService().download(release.downloadURL, to: directory) { [weak self] progress in
                 Task { @MainActor [weak self] in
                     guard let self, self.downloadGeneration == generation else { return }

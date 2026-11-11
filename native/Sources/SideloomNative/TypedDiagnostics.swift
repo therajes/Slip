@@ -27,15 +27,15 @@ enum RecoveryAction: String, Codable, Sendable {
     }
     var title: String {
         switch self {
-        case .retryDiscovery: "Retry Discovery"
-        case .connectUSB: "Connect via USB"
-        case .openAccounts: "Open Accounts"
-        case .refreshResources: "Refresh Resource Status"
-        case .locateIPA: "Locate IPA"
-        case .reviewEntitlements: "Review Entitlement Differences"
-        case .verifyInstallation: "Verify Device Installation"
-        case .retrySafely: "Retry Safely"
-        case .detailedDiagnostics: "Open Detailed Diagnostics"
+        case .retryDiscovery: String(localized: "Retry Discovery")
+        case .connectUSB: String(localized: "Connect via USB")
+        case .openAccounts: String(localized: "Open Accounts")
+        case .refreshResources: String(localized: "Refresh Resource Status")
+        case .locateIPA: String(localized: "Locate IPA")
+        case .reviewEntitlements: String(localized: "Review Entitlement Differences")
+        case .verifyInstallation: String(localized: "Verify Device Installation")
+        case .retrySafely: String(localized: "Retry Safely")
+        case .detailedDiagnostics: String(localized: "Open Detailed Diagnostics")
         }
     }
 }
@@ -48,20 +48,20 @@ struct SlipDiagnostic: Codable, Equatable, Sendable {
     var recovery: RecoveryAction
     var title: String {
         switch code {
-        case .smsRequired: "SMS verification required"
-        case .interactionRequired: "Open Slip to finish authentication"
-        case .appIDCapacity: "App ID availability needs attention"
-        case .entitlementUnsupported: "Signing capabilities need review"
-        case .encrypted: "Encrypted executable cannot be signed"
-        case .invalidArchive: "The IPA could not be validated"
-        case .untrusted: "iPhone trust needs attention"
-        case .disconnected: "The selected iPhone is unavailable"
-        case .developerMode: "Check Developer Mode on your iPhone"
-        case .timeout: "The connection timed out"
-        case .verificationPending: "Installation verification is pending"
-        case .sourceMissing: "The saved IPA is missing"
-        case .cancelled: "Operation cancelled"
-        case .unknown: "Operation needs attention"
+        case .smsRequired: String(localized: "SMS verification required")
+        case .interactionRequired: String(localized: "Open Slip to finish authentication")
+        case .appIDCapacity: String(localized: "App ID availability needs attention")
+        case .entitlementUnsupported: String(localized: "Signing capabilities need review")
+        case .encrypted: String(localized: "Encrypted executable cannot be signed")
+        case .invalidArchive: String(localized: "The IPA could not be validated")
+        case .untrusted: String(localized: "iPhone trust needs attention")
+        case .disconnected: String(localized: "The selected iPhone is unavailable")
+        case .developerMode: String(localized: "Check Developer Mode on your iPhone")
+        case .timeout: String(localized: "The connection timed out")
+        case .verificationPending: String(localized: "Installation verification is pending")
+        case .sourceMissing: String(localized: "The saved IPA is missing")
+        case .cancelled: String(localized: "Operation cancelled")
+        case .unknown: String(localized: "Operation needs attention")
         }
     }
 }

@@ -1,6 +1,13 @@
 import Foundation
 import Darwin
 
+private actor HostResolutionCache {
+    static let shared = HostResolutionCache()
+    private var verified: Set<String> = []
+    func contains(_ host: String) -> Bool { verified.contains(host) }
+    func insert(_ host: String) { verified.insert(host) }
+}
+
 enum NetworkEndpointPolicy {
     static func publicHost(_ input: String) -> Bool {
         let host = input.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
@@ -28,21 +35,25 @@ enum NetworkEndpointPolicy {
     }
 
     static func resolvesPublicly(_ host: String) async -> Bool {
-        await Task.detached(priority: .utility) {
-            guard publicHost(host) else { return false }
+        let key = host.lowercased()
+        if await HostResolutionCache.shared.contains(key) { return true }
+        let result = await Task.detached(priority: .utility) {
+            guard publicHost(key) else { return false }
             var hints = addrinfo()
             hints.ai_socktype = SOCK_STREAM
             var addresses: UnsafeMutablePointer<addrinfo>?
-            guard getaddrinfo(host, nil, &hints, &addresses) == 0, let first = addresses else { return false }
+            guard getaddrinfo(key, nil, &hints, &addresses) == 0, let first = addresses else { return false }
             defer { freeaddrinfo(first) }
             var current: UnsafeMutablePointer<addrinfo>? = first
             while let item = current {
                 var name = [CChar](repeating: 0, count: Int(NI_MAXHOST))
                 guard getnameinfo(item.pointee.ai_addr, item.pointee.ai_addrlen, &name, socklen_t(name.count), nil, 0, NI_NUMERICHOST) == 0,
-                      publicHost(String(cString: name)) else { return false }
+                      publicHost(String(decoding: name.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)) else { return false }
                 current = item.pointee.ai_next
             }
             return true
         }.value
+        if result { await HostResolutionCache.shared.insert(key) }
+        return result
     }
 }

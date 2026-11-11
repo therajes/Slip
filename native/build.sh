@@ -6,6 +6,7 @@ PROJECT_DIR=${NATIVE_DIR:h}
 CORE_DIR="$PROJECT_DIR/src-tauri"
 OUTPUT_DIR="$NATIVE_DIR/build"
 APP_DIR="$OUTPUT_DIR/Slip.app"
+SLIP_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$NATIVE_DIR/Info.plist")
 CARGO_BIN=${CARGO_BIN:-$(command -v cargo || true)}
 if [[ -z "$CARGO_BIN" && -x "$HOME/.cargo/bin/cargo" ]]; then
     CARGO_BIN="$HOME/.cargo/bin/cargo"
@@ -54,7 +55,7 @@ ditto "$NATIVE_DIR/LICENSE" "$APP_DIR/Contents/Resources/License.txt"
 ditto "$PROJECT_DIR/LICENSE" "$APP_DIR/Contents/Resources/OriginalLicense.txt"
 ditto "$NATIVE_DIR/THIRD_PARTY_NOTICES.md" "$APP_DIR/Contents/Resources/ThirdPartyNotices.txt"
 xcrun clang -fobjc-arc -arch arm64 -mmacosx-version-min=26.0 -framework Foundation \
-    "$NATIVE_DIR/AnisetteHelper.m" -o "$APP_DIR/Contents/Resources/slip-anisette"
+    -DSLIP_BUILD_VERSION=\"$SLIP_VERSION\" "$NATIVE_DIR/AnisetteHelper.m" -o "$APP_DIR/Contents/Resources/slip-anisette"
 chmod 755 "$APP_DIR/Contents/MacOS/Slip" "$APP_DIR/Contents/Resources/sideloom-core" "$APP_DIR/Contents/Resources/slip-anisette"
 
 xcrun actool "$NATIVE_DIR/Assets.xcassets" "$NATIVE_DIR/SlipIcon.icon" \
@@ -67,6 +68,9 @@ xcrun actool "$NATIVE_DIR/Assets.xcassets" "$NATIVE_DIR/SlipIcon.icon" \
     --warnings \
     --notices >/dev/null
 
+for locale in "$NATIVE_DIR"/Sources/SideloomNative/Localization/*.lproj(N); do
+    ditto "$locale" "$APP_DIR/Contents/Resources/${locale:t}"
+done
 codesign --force --sign "$SIDELOOM_SIGN_IDENTITY" --identifier app.sideloom.native.anisette "$APP_DIR/Contents/Resources/slip-anisette"
 codesign --force --sign "$SIDELOOM_SIGN_IDENTITY" --identifier app.sideloom.native.core "$APP_DIR/Contents/Resources/sideloom-core"
 codesign --force --deep --sign "$SIDELOOM_SIGN_IDENTITY" --identifier app.sideloom.native "$APP_DIR"
@@ -76,4 +80,5 @@ if [[ "${SLIP_PRODUCTION_SIGNING:-0}" == 1 ]]; then
     "$NATIVE_DIR/production-sign.sh" app "$APP_DIR"
 fi
 
+"$NATIVE_DIR/release-verify.sh" "$APP_DIR"
 echo "$APP_DIR"

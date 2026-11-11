@@ -60,3 +60,7 @@ This matrix is the feature overview for Slip 2.8. Slip is designed only for pers
 ## 2.9 additions
 
 Catalog Browse uses user-approved sources, bounded cache and optional image previews. Multi-device queue targets remain sequential and independently reviewed. Settings provides portable nonsecret metadata backups; device trust, credentials and private iPhone app data are excluded. See RELEASE_NOTES_2.9.0.md and MIGRATION_2.9.0.md for limits.
+
+## 3.0 local candidate
+
+Refresh Guard shares durable eligibility across GUI/worker/companion; exact-device evidence and original signing limits remain authoritative. Optional NSStatusItem companion uses existing window/state ownership. Assurance/readiness is not proof of a completed renewal. Production signing/notary and authentic self-updates require external credentials and validation; English fallback is used for unreviewed locales. See USER_MANUAL_3.0.0.md and SUPPORT_MATRIX_3.0.0.md.

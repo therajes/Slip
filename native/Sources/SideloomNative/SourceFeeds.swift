@@ -117,7 +117,7 @@ struct SourceFeedClient: Sendable {
         request.setValue("Slip", forHTTPHeaderField: "User-Agent")
         if let etag { request.setValue(etag, forHTTPHeaderField: "If-None-Match") }
         if let lastModified { request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since") }
-        let (bytes, response) = try await session.bytes(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw SideloomError.message("Invalid source response.") }
         if http.statusCode == 429 || (http.statusCode == 403 && http.value(forHTTPHeaderField: "X-RateLimit-Remaining") == "0") {
             let retry = http.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
@@ -126,15 +126,7 @@ struct SourceFeedClient: Sendable {
         }
         guard [200, 304].contains(http.statusCode) else { throw SideloomError.message("Source unavailable. Try later.") }
         guard http.url?.host?.lowercased() == host.lowercased() else { throw SideloomError.message("Source changed hosts. Review its new address before subscribing.") }
-        guard response.expectedContentLength <= 4 * 1024 * 1024 else { throw SideloomError.message("The source exceeds the 4 MB limit.") }
-        var data = Data()
-        if http.statusCode != 304 {
-            for try await byte in bytes {
-                try Task.checkCancellation()
-                guard data.count < 4 * 1024 * 1024 else { throw SideloomError.message("The source exceeds the 4 MB limit.") }
-                data.append(byte)
-            }
-        }
+        guard data.count <= 4 * 1024 * 1024 else { throw SideloomError.message("The source exceeds the 4 MB limit.") }
         return FeedFetchResponse(data: data, notModified: http.statusCode == 304, etag: http.value(forHTTPHeaderField: "ETag"), lastModified: http.value(forHTTPHeaderField: "Last-Modified"))
     }
 }

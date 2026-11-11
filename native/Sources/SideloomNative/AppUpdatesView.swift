@@ -59,11 +59,13 @@ struct AppUpdatesView: View {
                 }
             }
             Spacer(minLength: 0)
+            if busy && model.isDownloading {
+                DownloadProgressContent(progress: model.operationProgress, inspecting: model.isInspecting, motion: false) {
+                    model.cancelDownload()
+                }
+            }
             HStack {
                 Button("Close") { dismiss() }.disabled(busy)
-                if busy && model.isDownloading {
-                    Button("Cancel Download") { model.cancelDownload() }
-                }
                 Spacer()
                 if let release = selected {
                     Button("Prepare Update…") {

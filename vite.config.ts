@@ -18,6 +18,11 @@ export default defineConfig(async () => ({
   },
   build: {
     target: "es2018",
+    rolldownOptions: {
+      output: {
+        codeSplitting: { groups: [{ name: "vendor", test: /node_modules/ }] },
+      },
+    },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
